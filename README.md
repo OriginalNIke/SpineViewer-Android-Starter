@@ -40,3 +40,8 @@ O ambiente usado para preparar este ZIP não possui `dotnet`, então **o build a
 ## Código original
 
 O ZIP original SpineViewer utiliza WPF/SFML e referências x64. Não foram copiadas as implementações originais nesta primeira base, porque a integração exige remover dependências gráficas Windows, analisar licenças e adaptar o runtime. Preserve o ZIP original para a próxima etapa.
+
+### Correção do GitHub Actions
+O workflow anterior ainda publicava `net8.0-android` apesar do projeto usar `net10.0-android`.
+Esta revisão alinha ambos para .NET 10 e adiciona a referência explícita ao pacote `Microsoft.Maui.Controls`.
+Se o GitHub executar `-f net8.0-android`, confirme que o workflow atualizado substituiu o antigo na branch utilizada.
