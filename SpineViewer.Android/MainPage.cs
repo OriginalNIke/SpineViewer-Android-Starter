@@ -23,6 +23,8 @@ public sealed class MainPage : ContentPage
     {
         Title = "SpineViewer Android";
         BackgroundColor = Color.FromArgb("#111827");
+        var folderButton = new Button { Text = "📁 Selecionar pasta do personagem" };
+        folderButton.Clicked += ImportFolder;
         var json = new Button { Text = "Importar JSON Spine" };
         json.Clicked += ImportJson;
         var atlasButton = new Button { Text = "Importar .atlas" };
@@ -54,13 +56,57 @@ public sealed class MainPage : ContentPage
         {
             Padding = new Thickness(18, 24), Spacing = 14,
             Children = { new Label { Text = "SpineViewer Android", FontSize = 25, FontAttributes = FontAttributes.Bold, TextColor = Colors.White },
-                json, atlasButton, imageButton, binaryButton, loadRuntime, texturedView,
+                folderButton, json, atlasButton, imageButton, binaryButton, loadRuntime, texturedView,
                 atlasInfo, new Label { Text = "Skins", TextColor = Colors.White }, skins,
                 new Label { Text = "Animações", TextColor = Colors.White }, animations, play, status }
         }};
         skins.SelectedIndexChanged += (_, _) => { if (skins.SelectedItem is not string s) return; Active.SetSkin(s); texturedView.InvalidateSurface(); status.Text = $"Skin: {s}"; };
         animations.SelectedIndexChanged += (_, _) => { if (animations.SelectedItem is not string a) return; Active.SetAnimation(a); texturedView.InvalidateSurface(); status.Text = $"Animação: {a}"; };
     }
+    async void ImportFolder(object? sender, EventArgs e)
+    {
+        try
+        {
+            var files = await FolderImporter.SelectAndReadAsync();
+            if (files is null) return;
+            var skeletons = files.Where(f => f.Name.EndsWith(".skel", StringComparison.OrdinalIgnoreCase) ||
+                                             f.Name.EndsWith(".json", StringComparison.OrdinalIgnoreCase)).ToList();
+            var atlases = files.Where(f => f.Name.EndsWith(".atlas", StringComparison.OrdinalIgnoreCase)).ToList();
+            if (skeletons.Count != 1 || atlases.Count != 1)
+                throw new InvalidDataException($"A pasta deve conter exatamente um .skel ou .json e um .atlas. Encontrados: {skeletons.Count} esqueletos e {atlases.Count} atlas.");
+            var skeleton = skeletons[0];
+            bool binary = skeleton.Name.EndsWith(".skel", StringComparison.OrdinalIgnoreCase);
+            var atlasString = System.Text.Encoding.UTF8.GetString(atlases[0].Content);
+            var catalog = SpineAtlasCatalog.Read(atlasString);
+            var pngs = files.Where(f => f.Name.EndsWith(".png", StringComparison.OrdinalIgnoreCase)).ToList();
+            var missing = catalog.Pages.Where(page => !pngs.Any(p => string.Equals(p.Name, page.Name, StringComparison.OrdinalIgnoreCase)))
+                                       .Select(page => page.Name).ToArray();
+            if (missing.Length > 0) throw new InvalidDataException("Texturas ausentes: " + string.Join(", ", missing));
+            // Validar o conjunto antes de alterar a sessão carregada.
+            playing = false;
+            skeletonContent = skeleton.Content;
+            skeletonBinary = binary;
+            atlasText = atlasString;
+            atlas = catalog;
+            selectedTextures.Clear();
+            foreach (var png in pngs)
+            {
+                texturedView.SetTexture(png.Name, png.Content);
+                selectedTextures.Add(png.Name);
+            }
+            atlasInfo.Text = $"Atlas: {catalog.Pages.Count} página(s), {catalog.Pages.Sum(p => p.Regions.Count)} regiões.";
+            if (!binary)
+            {
+                var data = SpineJsonCatalog.Read(System.Text.Encoding.UTF8.GetString(skeleton.Content), skeleton.Name);
+                skins.ItemsSource = data.Skins.ToList();
+                animations.ItemsSource = data.Animations.ToList();
+            }
+            await LoadRuntimeCoreAsync();
+            status.Text = $"Pasta importada: {skeleton.Name}, {atlases[0].Name}, {pngs.Count} PNG(s). Spine {(use41 ? "4.1" : "4.2")} carregado.";
+        }
+        catch (Exception ex) { await DisplayAlertAsync("Importar pasta", ex.Message, "OK"); }
+    }
+
     async void ImportJson(object? sender, EventArgs e)
     {
         try
@@ -111,20 +157,28 @@ public sealed class MainPage : ContentPage
         var matches = atlas?.Pages.Count(p => selectedTextures.Any(t => string.Equals(t, p.Name, StringComparison.OrdinalIgnoreCase))) ?? 0;
         status.Text = $"Texturas: {selectedTextures.Count}; páginas do atlas correspondentes: {matches}/{atlas?.Pages.Count ?? 0}.";
     }
-    async void LoadRuntime(object? sender, EventArgs e) {
-        try {
-            if(atlasText == null || skeletonContent == null) throw new InvalidOperationException("Importe primeiro um .atlas e um .json ou .skel da versão 4.1 ou 4.2.");
-            use41 = skeletonBinary && SpineBinaryInspector.Inspect(skeletonContent).Version?.StartsWith("4.1") == true;
-            if (use41) runtime41.Load(atlasText,skeletonContent,skeletonBinary);
-            else runtime.Load(atlasText,skeletonContent,skeletonBinary);
-            skins.ItemsSource = Active.Skins.ToList(); animations.ItemsSource = Active.Animations.ToList();
-            if(Active.Skins.Count>0) skins.SelectedIndex=0;
-            if(Active.Animations.Count>0) animations.SelectedIndex=0;
-            playing = false; play.Text = "▶ Reproduzir";
-            play.IsEnabled = use41 && Active.Animations.Count>0;
-            texturedView.InvalidateSurface();
-            status.Text = $"Spine {(use41 ? "4.1" : "4.2")} carregado: {Active.Skins.Count} skins, {Active.Animations.Count} animações. Renderização texturizada disponível para Spine 4.1; Spine 4.2 aguarda renderizador compatível.";
-        } catch(Exception ex) { await DisplayAlertAsync("Runtime Spine 4.2",ex.Message,"OK"); }
+    async void LoadRuntime(object? sender, EventArgs e)
+    {
+        try { await LoadRuntimeCoreAsync(); }
+        catch (Exception ex) { await DisplayAlertAsync("Runtime Spine", ex.Message, "OK"); }
+    }
+    Task LoadRuntimeCoreAsync()
+    {
+        if (atlasText == null || skeletonContent == null)
+            throw new InvalidOperationException("Importe primeiro um .atlas e um .json ou .skel.");
+        use41 = skeletonBinary && SpineBinaryInspector.Inspect(skeletonContent).Version?.StartsWith("4.1") == true;
+        if (use41) runtime41.Load(atlasText, skeletonContent, skeletonBinary);
+        else runtime.Load(atlasText, skeletonContent, skeletonBinary);
+        skins.ItemsSource = Active.Skins.ToList();
+        animations.ItemsSource = Active.Animations.ToList();
+        if (Active.Skins.Count > 0) skins.SelectedIndex = 0;
+        if (Active.Animations.Count > 0) animations.SelectedIndex = 0;
+        playing = false;
+        play.Text = "▶ Reproduzir";
+        play.IsEnabled = use41 && Active.Animations.Count > 0;
+        texturedView.InvalidateSurface();
+        status.Text = $"Spine {(use41 ? "4.1" : "4.2")} carregado: {Active.Skins.Count} skins, {Active.Animations.Count} animações.";
+        return Task.CompletedTask;
     }
     async void ImportSkel(object? sender, EventArgs e)
     {
