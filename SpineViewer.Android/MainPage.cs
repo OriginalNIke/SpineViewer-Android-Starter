@@ -11,6 +11,14 @@ public sealed class MainPage : ContentPage
     readonly Button play = new() { Text = "▶ Reproduzir (aguardando runtime)", IsEnabled = false };
     readonly List<string> selectedTextures = new();
     AtlasCatalog? atlas;
+    string? atlasText;
+    byte[]? skeletonContent;
+    bool skeletonBinary;
+    readonly Spine42Session runtime = new();
+    readonly SkeletonDebugDrawable debugDrawable = new();
+    readonly GraphicsView skeletonView = new() { HeightRequest = 290 };
+    bool playing;
+    IDispatcherTimer? playbackTimer;
     public MainPage()
     {
         Title = "SpineViewer Android";
@@ -23,18 +31,28 @@ public sealed class MainPage : ContentPage
         imageButton.Clicked += ImportTexture;
         var binaryButton = new Button { Text = "Inspecionar .skel" };
         binaryButton.Clicked += ImportSkel;
+        debugDrawable.Session = runtime;
+        skeletonView.Drawable = debugDrawable;
+        var loadRuntime = new Button { Text = "Carregar runtime Spine 4.2" };
+        loadRuntime.Clicked += LoadRuntime;
+        play.Text = "▶ Reproduzir";
+        play.Clicked += (_, _) => { playing = !playing; play.Text = playing ? "⏸ Pausar" : "▶ Reproduzir"; };
+        playbackTimer = Dispatcher.CreateTimer();
+        playbackTimer.Interval = TimeSpan.FromMilliseconds(33);
+        playbackTimer.Tick += (_, _) => { if (!playing || !runtime.IsLoaded) return; runtime.Step(0.033f); skeletonView.Invalidate(); };
+        playbackTimer.Start();
         Content = new ScrollView { Content = new VerticalStackLayout
         {
             Padding = new Thickness(18, 24), Spacing = 14,
             Children = { new Label { Text = "SpineViewer Android", FontSize = 25, FontAttributes = FontAttributes.Bold, TextColor = Colors.White },
-                json, atlasButton, imageButton, binaryButton,
+                json, atlasButton, imageButton, binaryButton, loadRuntime, skeletonView,
                 new Border { Stroke = Color.FromArgb("#374151"), BackgroundColor = Color.FromArgb("#1F2937"), Padding = 12,
                     Content = new VerticalStackLayout { Children = { texture, info } } },
                 atlasInfo, new Label { Text = "Skins", TextColor = Colors.White }, skins,
                 new Label { Text = "Animações", TextColor = Colors.White }, animations, play, status }
         }};
-        skins.SelectedIndexChanged += (_, _) => { if (skins.SelectedItem is string s) status.Text = $"Skin selecionada: {s}. Aplicação visual requer runtime."; };
-        animations.SelectedIndexChanged += (_, _) => { if (animations.SelectedItem is string a) status.Text = $"Animação selecionada: {a}. Reprodução requer runtime."; };
+        skins.SelectedIndexChanged += (_, _) => { if (skins.SelectedItem is string s) runtime.SetSkin(s); skeletonView.Invalidate(); status.Text = $"Skin: {s}"; };
+        animations.SelectedIndexChanged += (_, _) => { if (animations.SelectedItem is string a) runtime.SetAnimation(a); skeletonView.Invalidate(); status.Text = $"Animação: {a}"; };
     }
     async void ImportJson(object? sender, EventArgs e)
     {
@@ -44,7 +62,9 @@ public sealed class MainPage : ContentPage
             if (file is null) return;
             if (!file.FileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase)) throw new FormatException("Selecione um .json.");
             using var stream = await file.OpenReadAsync(); using var reader = new StreamReader(stream);
-            var catalog = SpineJsonCatalog.Read(await reader.ReadToEndAsync(), file.FileName);
+            var jsonText = await reader.ReadToEndAsync();
+            skeletonContent = System.Text.Encoding.UTF8.GetBytes(jsonText); skeletonBinary = false;
+            var catalog = SpineJsonCatalog.Read(jsonText, file.FileName);
             skins.ItemsSource = catalog.Skins.ToList(); animations.ItemsSource = catalog.Animations.ToList();
             status.Text = $"{catalog.Name}: {catalog.Skins.Count} skins e {catalog.Animations.Count} animações.";
         }
@@ -58,7 +78,7 @@ public sealed class MainPage : ContentPage
             if (file is null) return;
             if (!file.FileName.EndsWith(".atlas", StringComparison.OrdinalIgnoreCase)) throw new FormatException("Selecione um .atlas.");
             using var stream = await file.OpenReadAsync(); using var reader = new StreamReader(stream);
-            atlas = SpineAtlasCatalog.Read(await reader.ReadToEndAsync());
+            atlasText = await reader.ReadToEndAsync(); atlas = SpineAtlasCatalog.Read(atlasText);
             atlasInfo.Text = $"Atlas: {atlas.Pages.Count} página(s), {atlas.Pages.Sum(p => p.Regions.Count)} região(ões). Páginas: {string.Join(", ", atlas.Pages.Select(p => p.Name))}";
             UpdateTextureStatus();
         }
@@ -84,6 +104,18 @@ public sealed class MainPage : ContentPage
         var matches = atlas?.Pages.Count(p => selectedTextures.Any(t => string.Equals(t, p.Name, StringComparison.OrdinalIgnoreCase))) ?? 0;
         info.Text = $"Texturas carregadas: {selectedTextures.Count}; páginas do atlas correspondentes: {matches}/{atlas?.Pages.Count ?? 0}. Exibindo PNG sem deformação esquelética.";
     }
+    async void LoadRuntime(object? sender, EventArgs e) {
+        try {
+            if(atlasText == null || skeletonContent == null) throw new InvalidOperationException("Importe primeiro um .atlas e um .json ou .skel da versão 4.2.");
+            runtime.Load(atlasText,skeletonContent,skeletonBinary);
+            skins.ItemsSource = runtime.Skins.ToList(); animations.ItemsSource = runtime.Animations.ToList();
+            if(runtime.Skins.Count>0) skins.SelectedIndex=0;
+            if(runtime.Animations.Count>0) animations.SelectedIndex=0;
+            play.IsEnabled = runtime.Animations.Count>0;
+            skeletonView.Invalidate();
+            status.Text = $"Spine 4.2 carregado: {runtime.Skins.Count} skins, {runtime.Animations.Count} animações. Prévia de ossos (sem texturas).";
+        } catch(Exception ex) { await DisplayAlert("Runtime Spine 4.2",ex.Message,"OK"); }
+    }
     async void ImportSkel(object? sender, EventArgs e)
     {
         try
@@ -92,7 +124,8 @@ public sealed class MainPage : ContentPage
             if (file is null) return;
             if (!file.FileName.EndsWith(".skel", StringComparison.OrdinalIgnoreCase)) throw new FormatException("Selecione um .skel.");
             using var stream = await file.OpenReadAsync(); using var buffer = new MemoryStream(); await stream.CopyToAsync(buffer);
-            var result = SpineBinaryInspector.Inspect(buffer.ToArray());
+            skeletonContent = buffer.ToArray(); skeletonBinary = true;
+            var result = SpineBinaryInspector.Inspect(skeletonContent);
             status.Text = $"{file.FileName}: {result.ByteCount} bytes; versão provável: {result.Version ?? "não identificada"}. Decodificação .skel ainda pendente.";
         }
         catch (Exception ex) { await DisplayAlert("Inspeção .skel", ex.Message, "OK"); }

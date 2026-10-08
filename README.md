@@ -1,13 +1,21 @@
-# SpineViewer Android — etapa de importação e prévia de texturas
+# SpineViewer Android — Runtime 4.2 / Stage 2
 
-Base MAUI .NET 10 com importação de Spine JSON (catálogo de skins/animações), leitura de `.atlas` (páginas/regiões), seleção de PNG e prévia estática, inspeção preliminar do cabeçalho `.skel`.
+## Implementado
+- Incluído o código original SpineRuntime42 (4.2.74) proveniente do ZIP fornecido, em projeto .NET 10 sem dependência x64.
+- Leitura pelo runtime 4.2 de JSON ou `.skel` **com** `.atlas` (não somente inspeção do cabeçalho).
+- `Skeleton`, `AnimationState`, troca de skins e reprodução por timer de ~30 FPS.
+- Visualização gráfica **de depuração dos ossos animados** com `GraphicsView` (não mostra o personagem texturizado).
+- Importação PNG anterior preservada como prévia separada.
 
-**Ainda NÃO há reprodução gráfica de animações Spine, troca visual de skins, recorte de regiões atlas ou decodificação de esqueletos binários.** O botão Reproduzir permanece desabilitado intencionalmente. A leitura de atlas é preliminar e pode não aceitar todos os formatos. A detecção da versão `.skel` é apenas heurística.
+## Limitações importantes
+- **Ainda não há renderização de sprites/meshes texturizados**, nem upload de texturas para GPU. `DeferredTextureLoader` apenas fornece metadados do atlas para o runtime.
+- O runtime 4.2 exige assets compatíveis 4.2; versões antigas não são aceitas automaticamente.
+- Arquivos `.atlas` e `.skel` podem falhar se forem incompatíveis, incompletos ou tiverem formatos diferentes.
+- Sem SDK Android no ambiente de criação: **compilação não verificada**. Execute o workflow GitHub Actions e forneça o log.
+- Antes de redistribuir o APK, revise a licença Spine Runtimes incluída nos arquivos `.cs` e as condições do Spine Editor.
 
-## Próxima etapa técnica
+## Uso
+Importe `.atlas` e `.json`/`.skel` versão 4.2; toque em **Carregar runtime Spine 4.2**, escolha animação/skin e toque em **Reproduzir**. A área com linhas ciano é a prévia esquelética.
 
-Integrar um runtime Spine licenciado/compatível com Android e a versão exportada do arquivo; fornecer carregamento de SkeletonData (JSON/binário), AtlasAttachmentLoader, AnimationState, cálculo de world transforms, clipping, mesh e renderizador GPU para atlas. Verificar as licenças antes de redistribuir código/runtime do SpineViewer original.
-
-## Compilação
-
-Enviar o conteúdo da pasta raiz ao GitHub e executar `.github/workflows/android-apk.yml`. SDK e workload .NET 10 Android são necessários. Não foi possível compilar neste ambiente.
+## Próxima etapa
+Renderizador Android com textura, recortes UV, malhas, ordem de desenho e blending dos slots.
