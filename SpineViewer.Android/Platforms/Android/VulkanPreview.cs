@@ -27,12 +27,13 @@ internal static class VulkanNative {
 internal sealed class VulkanPreviewCallback : Java.Lang.Object, ISurfaceHolderCallback {
     private IntPtr renderer;
     private readonly Action<string> status;
+    private readonly Action presented;
     private readonly Func<IReadOnlyList<SpineTriangle>> triangles;
     private readonly Func<IReadOnlyDictionary<string, byte[]>> pngs;
     private readonly HashSet<string> uploaded = new(StringComparer.OrdinalIgnoreCase);
     private int width=1,height=1;
-    public VulkanPreviewCallback(Action<string> status, Func<IReadOnlyList<SpineTriangle>> triangles, Func<IReadOnlyDictionary<string,byte[]>> pngs) {
-        this.status=status;this.triangles=triangles;this.pngs=pngs;
+    public VulkanPreviewCallback(Action<string> status, Action presented, Func<IReadOnlyList<SpineTriangle>> triangles, Func<IReadOnlyDictionary<string,byte[]>> pngs) {
+        this.status=status;this.presented=presented;this.triangles=triangles;this.pngs=pngs;
     }
     public void SurfaceCreated(ISurfaceHolder holder) {
         VulkanPreview.SetActive(this);
@@ -97,6 +98,7 @@ internal sealed class VulkanPreviewCallback : Java.Lang.Object, ISurfaceHolderCa
                 finally {foreach(var p in pages)Marshal.FreeCoTaskMem(p);}
             }
             if(VulkanNative.Draw(renderer)!=1)status("Vulkan: erro ao apresentar quadro");
+            else presented();
         } catch(Exception ex) {status("Vulkan: "+ex.Message);}
     }
 }
@@ -108,6 +110,7 @@ public sealed class SpineVulkanView : Microsoft.Maui.Controls.View
     public Func<IReadOnlyList<SpineTriangle>> GetTriangles { get; set; } = () => Array.Empty<SpineTriangle>();
     public Func<IReadOnlyDictionary<string, byte[]>> GetTextures { get; set; } = () => new Dictionary<string, byte[]>();
     public Action<string> OnStatus { get; set; } = _ => { };
+    public Action OnFramePresented { get; set; } = () => { };
     public SpineVulkanView() { HeightRequest = 520; }
     public void InvalidateSurface() => Surface?.Render();
 }
@@ -139,7 +142,7 @@ public sealed class SpineVulkanSurface : SurfaceView
     public void Attach(SpineVulkanView view)
     {
         Detach();
-        callback = new VulkanPreviewCallback(view.OnStatus, () => view.GetTriangles(), () => view.GetTextures());
+        callback = new VulkanPreviewCallback(view.OnStatus, view.OnFramePresented, () => view.GetTriangles(), () => view.GetTextures());
         Holder?.AddCallback(callback);
     }
     public void Detach()

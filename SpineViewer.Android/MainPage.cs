@@ -15,6 +15,7 @@ public sealed class MainPage : ContentPage
     readonly Label fpsInfo = new() { Text = "FPS (atualizações): --", TextColor = Colors.LightGray };
     readonly Picker rendererChoice = new() { Title = "Renderizador", TextColor = Colors.White, TitleColor = Colors.LightGray };
     int frameSamples;
+    long vulkanPresented;
     long fpsStart;
     AtlasCatalog? atlas;
     string? atlasText;
@@ -38,6 +39,7 @@ public sealed class MainPage : ContentPage
         rendererChoice.SelectedIndexChanged += (_, _) => SelectRenderer();
         vulkanView.GetTriangles = () => texturedView.GetTriangles();
         vulkanView.GetTextures = () => vulkanTextures;
+        vulkanView.OnFramePresented = () => System.Threading.Interlocked.Increment(ref vulkanPresented);
         vulkanView.OnStatus = message => MainThread.BeginInvokeOnMainThread(() => {
             gpuInfo.Text = message;
             if (rendererChoice.SelectedIndex == 1 &&
@@ -77,7 +79,10 @@ public sealed class MainPage : ContentPage
             if ((now - fpsStart) >= System.Diagnostics.Stopwatch.Frequency)
             {
                 double seconds = (now - fpsStart) / (double)System.Diagnostics.Stopwatch.Frequency;
-                fpsInfo.Text = $"Atualizações de animação: {frameSamples / seconds:F1}/s (não mede FPS da GPU)";
+                long presented = System.Threading.Interlocked.Exchange(ref vulkanPresented, 0);
+                fpsInfo.Text = rendererChoice.SelectedIndex == 1
+                    ? $"Vulkan: {presented / seconds:F1} apresentações/s | animação: {frameSamples / seconds:F1}/s"
+                    : $"OpenGL: {frameSamples / seconds:F1} atualizações/s (não mede apresentação)";
                 frameSamples = 0; fpsStart = now;
             }
         };

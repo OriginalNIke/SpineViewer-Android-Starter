@@ -35,6 +35,7 @@ struct Renderer {
     VkCommandPool commandPool = VK_NULL_HANDLE;
     VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
     VkSemaphore imageAvailable = VK_NULL_HANDLE;
+    VkFence frameFence = VK_NULL_HANDLE; // Signals completion before reusing the single command/vertex buffer.
     std::vector<VkImageView> views;
     std::vector<VkFramebuffer> framebuffers;
     // Vulkan textured Spine renderer resources.
@@ -308,6 +309,7 @@ struct Renderer {
             if(sampler) vkDestroySampler(device,sampler,nullptr);
             releasePipelines();
             if(descriptorLayout) vkDestroyDescriptorSetLayout(device,descriptorLayout,nullptr);
+            if (frameFence) vkDestroyFence(device, frameFence, nullptr);
             if (imageAvailable) vkDestroySemaphore(device, imageAvailable, nullptr);
             if (commandPool) vkDestroyCommandPool(device, commandPool, nullptr);
             for (auto fb : framebuffers) vkDestroyFramebuffer(device, fb, nullptr);
@@ -454,7 +456,9 @@ struct Renderer {
         alloc.commandBufferCount = 1;
         if (vkAllocateCommandBuffers(device, &alloc, &commandBuffer) != VK_SUCCESS) return false;
         VkSemaphoreCreateInfo sem{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
-        return vkCreateSemaphore(device, &sem, nullptr, &imageAvailable) == VK_SUCCESS;
+        if (vkCreateSemaphore(device, &sem, nullptr, &imageAvailable) != VK_SUCCESS) return false;
+        VkFenceCreateInfo fenceInfo{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+        return vkCreateFence(device, &fenceInfo, nullptr, &frameFence) == VK_SUCCESS;
     }
     bool drawClearFrame() {
         if (!device || !swapchain) return false;
@@ -499,9 +503,12 @@ struct Renderer {
         submit.waitSemaphoreCount = 1; submit.pWaitSemaphores = &imageAvailable;
         submit.pWaitDstStageMask = &waitStage;
         submit.commandBufferCount = 1; submit.pCommandBuffers = &commandBuffer;
-        if (vkQueueSubmit(queue, 1, &submit, VK_NULL_HANDLE) != VK_SUCCESS) return false;
-        // Prototype: queue idle avoids reuse races. Replace with per-frame fences for 60 FPS.
-        if (vkQueueWaitIdle(queue) != VK_SUCCESS) return false;
+        // A single in-flight frame is intentional: the host-visible vertex buffer and
+        // command buffer are shared. Wait for GPU completion before reusing them.
+        // This removes vkQueueWaitIdle from the frame loop without introducing races.
+        if (vkResetFences(device, 1, &frameFence) != VK_SUCCESS) return false;
+        if (vkQueueSubmit(queue, 1, &submit, frameFence) != VK_SUCCESS) return false;
+        if (vkWaitForFences(device, 1, &frameFence, VK_TRUE, UINT64_MAX) != VK_SUCCESS) return false;
         VkPresentInfoKHR present{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
         present.swapchainCount = 1; present.pSwapchains = &swapchain; present.pImageIndices = &index;
         result = vkQueuePresentKHR(queue, &present);
