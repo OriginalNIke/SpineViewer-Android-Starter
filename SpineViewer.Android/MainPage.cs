@@ -9,6 +9,7 @@ public sealed class MainPage : ContentPage
     readonly Button play = new() { Text = "▶ Reproduzir (aguardando runtime)", IsEnabled = false };
     readonly List<string> selectedTextures = new();
     readonly SpineGLView texturedView = new();
+    readonly Label gpuInfo = new() { Text = "GPU: OpenGL ES 3.0", TextColor = Colors.LightGray };
     AtlasCatalog? atlas;
     string? atlasText;
     byte[]? skeletonContent;
@@ -24,6 +25,8 @@ public sealed class MainPage : ContentPage
         Title = "SpineViewer Android";
         BackgroundColor = Color.FromArgb("#111827");
         var folderButton = new Button { Text = "📁 Selecionar pasta do personagem" };
+        var checkVulkan = new Button { Text = "Verificar suporte Vulkan" };
+        checkVulkan.Clicked += (_, _) => gpuInfo.Text = VulkanSupport.GetStatus();
         folderButton.Clicked += ImportFolder;
         var json = new Button { Text = "Importar JSON Spine" };
         json.Clicked += ImportJson;
@@ -56,7 +59,7 @@ public sealed class MainPage : ContentPage
         {
             Padding = new Thickness(18, 24), Spacing = 14,
             Children = { new Label { Text = "SpineViewer Android", FontSize = 25, FontAttributes = FontAttributes.Bold, TextColor = Colors.White },
-                folderButton, json, atlasButton, imageButton, binaryButton, loadRuntime, texturedView,
+                folderButton, json, atlasButton, imageButton, binaryButton, loadRuntime, checkVulkan, gpuInfo, texturedView,
                 atlasInfo, new Label { Text = "Skins", TextColor = Colors.White }, skins,
                 new Label { Text = "Animações", TextColor = Colors.White }, animations, play, status }
         }};
