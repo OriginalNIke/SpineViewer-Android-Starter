@@ -118,7 +118,7 @@ internal sealed class SpineGLRenderer : Java.Lang.Object, GLSurfaceView.IRendere
         sizeUniform=GLES30.GlGetUniformLocation(program,"uView"); halfHeightUniform=GLES30.GlGetUniformLocation(program,"uHalfHeight"); samplerUniform=GLES30.GlGetUniformLocation(program,"uTexture");
         GLES30.GlEnable(GLES30.GlBlend); GLES30.GlBlendFunc(GLES30.GlSrcAlpha,GLES30.GlOneMinusSrcAlpha);
         GLES30.GlDisable(GLES30.GlDepthTest);
-        GLES30.GlDisable(GLES30.GlCullFace); // Spine mesh triangles can use either winding.
+        GLES30.GlDisable(0x0B44); // GL_CULL_FACE // Spine mesh triangles can use either winding.
     }
     public void OnSurfaceChanged(Javax.Microedition.Khronos.Opengles.IGL10? gl,int w,int h)
     {
