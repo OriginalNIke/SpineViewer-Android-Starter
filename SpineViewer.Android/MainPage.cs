@@ -193,16 +193,56 @@ public sealed class MainPage : ContentPage
             var skeletons = files.Where(f => f.Name.EndsWith(".skel", StringComparison.OrdinalIgnoreCase) ||
                                              f.Name.EndsWith(".json", StringComparison.OrdinalIgnoreCase)).ToList();
             var atlases = files.Where(f => f.Name.EndsWith(".atlas", StringComparison.OrdinalIgnoreCase)).ToList();
-            if (skeletons.Count != 1 || atlases.Count != 1)
-                throw new InvalidDataException($"A pasta deve conter exatamente um .skel ou .json e um .atlas. Encontrados: {skeletons.Count} esqueletos e {atlases.Count} atlas.");
-            var skeleton = skeletons[0];
+            if (skeletons.Count == 0 || atlases.Count == 0)
+                throw new InvalidDataException("Nenhum conjunto Spine (.skel/.json e .atlas) encontrado na pasta ou subpastas.");
+            // A single runtime displays one skeleton at a time. Offer the discovered
+            // relative paths when multiple skeletons exist instead of mixing assets.
+            FolderImporter.Entry skeleton;
+            if (skeletons.Count == 1) skeleton = skeletons[0];
+            else
+            {
+                string cancel = "Cancelar";
+                var selection = await DisplayActionSheetAsync("Escolha o personagem encontrado", cancel, null,
+                    skeletons.Select(f => f.Name).ToArray());
+                if (string.IsNullOrEmpty(selection) || selection == cancel) return;
+                skeleton = skeletons.First(f => f.Name == selection);
+            }
             bool binary = skeleton.Name.EndsWith(".skel", StringComparison.OrdinalIgnoreCase);
-            var atlasString = System.Text.Encoding.UTF8.GetString(atlases[0].Content);
+            string stem = Path.GetFileNameWithoutExtension(skeleton.FileName);
+            // Prefer an atlas beside the skeleton with the same basename.
+            var rankedAtlases = atlases.OrderByDescending(f => f.Directory.Equals(skeleton.Directory, StringComparison.OrdinalIgnoreCase))
+                .ThenByDescending(f => Path.GetFileNameWithoutExtension(f.FileName).Equals(stem, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            var selectedAtlas = rankedAtlases[0];
+            if (rankedAtlases.Count > 1 &&
+                rankedAtlases[0].Directory.Equals(rankedAtlases[1].Directory, StringComparison.OrdinalIgnoreCase) &&
+                Path.GetFileNameWithoutExtension(rankedAtlases[0].FileName).Equals(stem, StringComparison.OrdinalIgnoreCase) ==
+                Path.GetFileNameWithoutExtension(rankedAtlases[1].FileName).Equals(stem, StringComparison.OrdinalIgnoreCase))
+            {
+                var selection = await DisplayActionSheetAsync("Escolha o atlas", "Cancelar", null,
+                    rankedAtlases.Select(f => f.Name).ToArray());
+                if (string.IsNullOrEmpty(selection) || selection == "Cancelar") return;
+                selectedAtlas = rankedAtlases.First(f => f.Name == selection);
+            }
+            var atlasString = System.Text.Encoding.UTF8.GetString(selectedAtlas.Content);
             var catalog = SpineAtlasCatalog.Read(atlasString);
             var pngs = files.Where(f => f.Name.EndsWith(".png", StringComparison.OrdinalIgnoreCase)).ToList();
-            var missing = catalog.Pages.Where(page => !pngs.Any(p => string.Equals(p.Name, page.Name, StringComparison.OrdinalIgnoreCase)))
-                                       .Select(page => page.Name).ToArray();
-            if (missing.Length > 0) throw new InvalidDataException("Texturas ausentes: " + string.Join(", ", missing));
+            var textures = new List<(string page, FolderImporter.Entry file)>();
+            foreach (var page in catalog.Pages)
+            {
+                string relativePage = page.Name.Replace('\\', '/').TrimStart('/');
+                string expected = string.IsNullOrEmpty(selectedAtlas.Directory) ? relativePage : selectedAtlas.Directory + "/" + relativePage;
+                var match = pngs.FirstOrDefault(p => p.Name.Equals(expected, StringComparison.OrdinalIgnoreCase));
+                if (match is null)
+                {
+                    var candidates = pngs.Where(p => p.FileName.Equals(Path.GetFileName(relativePage), StringComparison.OrdinalIgnoreCase)).ToList();
+                    if (candidates.Count == 1) match = candidates[0];
+                    else if (candidates.Count > 1)
+                        throw new InvalidDataException($"Textura ambígua '{page.Name}': {string.Join(", ", candidates.Select(c => c.Name))}. Coloque a PNG ao lado do atlas ou no caminho indicado nele.");
+                }
+                if (match is null) throw new InvalidDataException($"Textura ausente: {expected}");
+                textures.Add((page.Name, match));
+            }
             // Validar o conjunto antes de alterar a sessão carregada.
             playing = false;
             skeletonContent = skeleton.Content;
@@ -211,11 +251,11 @@ public sealed class MainPage : ContentPage
             atlas = catalog;
             selectedTextures.Clear();
             vulkanTextures.Clear();
-            foreach (var png in pngs)
+            foreach (var (page, png) in textures)
             {
-                texturedView.SetTexture(png.Name, png.Content);
-                vulkanTextures[png.Name] = png.Content;
-                selectedTextures.Add(png.Name);
+                texturedView.SetTexture(page, png.Content);
+                vulkanTextures[page] = png.Content;
+                selectedTextures.Add(page);
             }
             atlasInfo.Text = $"Atlas: {catalog.Pages.Count} página(s), {catalog.Pages.Sum(p => p.Regions.Count)} regiões.";
             if (!binary)
@@ -224,7 +264,7 @@ public sealed class MainPage : ContentPage
                 UpdateCatalogs(data.Skins.ToList(), data.Animations.ToList(), false);
             }
             await LoadRuntimeCoreAsync();
-            status.Text = $"Pasta importada: {skeleton.Name}, {atlases[0].Name}, {pngs.Count} PNG(s). Spine {(use41 ? "4.1" : "4.2")} carregado.";
+            status.Text = $"Pasta importada: {skeleton.Name}, {selectedAtlas.Name}, {textures.Count} textura(s). Spine {(use41 ? "4.1" : "4.2")} carregado.";
         }
         catch (Exception ex) { await DisplayAlertAsync("Importar pasta", ex.Message, "OK"); }
     }
