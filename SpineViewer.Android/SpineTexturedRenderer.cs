@@ -12,13 +12,26 @@ public sealed class SpineTexturedRenderer : SKCanvasView
 {
     public Func<IReadOnlyList<SpineTriangle>> GetTriangles { get; set; } = () => Array.Empty<SpineTriangle>();
     readonly Dictionary<string, SKBitmap> bitmaps = new(StringComparer.OrdinalIgnoreCase);
+    readonly Dictionary<string, SKShader> shaders = new(StringComparer.OrdinalIgnoreCase);
+    readonly SKPaint paint = new() { IsAntialias = false };
     public SpineTexturedRenderer() { HeightRequest = 420; IgnorePixelScaling = true; }
     public void SetTexture(string name, byte[] bytes)
     {
         var bitmap = SKBitmap.Decode(bytes) ?? throw new InvalidDataException($"PNG inválido: {name}");
+        if (shaders.Remove(name, out var oldShader)) oldShader.Dispose();
         if (bitmaps.Remove(name, out var old)) old.Dispose();
         bitmaps[name] = bitmap;
+        shaders[name] = SKShader.CreateBitmap(bitmap, SKShaderTileMode.Clamp, SKShaderTileMode.Clamp);
         InvalidateSurface();
+    }
+    protected override void OnHandlerChanged()
+    {
+        base.OnHandlerChanged();
+        if (Handler != null) return;
+        foreach (var shader in shaders.Values) shader.Dispose();
+        shaders.Clear();
+        foreach (var bitmap in bitmaps.Values) bitmap.Dispose();
+        bitmaps.Clear();
     }
     protected override void OnPaintSurface(SKPaintSurfaceEventArgs e)
     {
@@ -35,15 +48,14 @@ public sealed class SpineTexturedRenderer : SKCanvasView
         scale=Math.Clamp(scale,0.01f,8f);
         float cx=(minX+maxX)/2,cy=(minY+maxY)/2;
         foreach(var tri in triangles) {
-            if (!bitmaps.TryGetValue(tri.Page,out var bmp)) continue;
+            if (!bitmaps.TryGetValue(tri.Page,out var bmp) || !shaders.TryGetValue(tri.Page, out var shader)) continue;
             var points = new SKPoint[3]; var uvs = new SKPoint[3];
             for(int i=0;i<3;i++) {
                 points[i]=new SKPoint(e.Info.Width/2f+(tri.XY[2*i]-cx)*scale,e.Info.Height/2f-(tri.XY[2*i+1]-cy)*scale);
                 uvs[i]=new SKPoint(tri.UV[2*i]*bmp.Width,tri.UV[2*i+1]*bmp.Height);
             }
             using var vertices=SKVertices.CreateCopy(SKVertexMode.Triangles, points, uvs, null);
-            using var shader=SKShader.CreateBitmap(bmp,SKShaderTileMode.Clamp,SKShaderTileMode.Clamp);
-            using var paint=new SKPaint { Shader=shader,IsAntialias=true };
+            paint.Shader = shader;
             canvas.DrawVertices(vertices,SKBlendMode.Modulate,paint);
         }
     }
