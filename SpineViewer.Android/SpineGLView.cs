@@ -61,7 +61,7 @@ internal sealed class SpineGLRenderer : Java.Lang.Object, GLSurfaceView.IRendere
     readonly Dictionary<string, byte[]> pngs = new(StringComparer.OrdinalIgnoreCase);
     readonly Dictionary<string, int> textureIds = new(StringComparer.OrdinalIgnoreCase);
     readonly List<(string page, float[] vertices)> batches = new();
-    int program, posAttr, uvAttr, samplerUniform, sizeUniform;
+    int program, posAttr, uvAttr, samplerUniform, sizeUniform, halfHeightUniform;
     int vertexBuffer;
     int width = 1, height = 1;
     float centerX, centerY, scale = 1;
@@ -97,7 +97,7 @@ internal sealed class SpineGLRenderer : Java.Lang.Object, GLSurfaceView.IRendere
             }
         }
     }
-    const string VertexShader = "#version 300 es\nprecision highp float;\nin vec2 aPos; in vec2 aUV; uniform vec4 uView; out vec2 vUV; void main(){ vec2 p=(aPos-uView.xy)*uView.z; gl_Position=vec4(p.x/uView.w, -p.y, 0.0,1.0); vUV=aUV; }";
+    const string VertexShader = "#version 300 es\nprecision highp float;\nin vec2 aPos; in vec2 aUV; uniform vec4 uView; uniform float uHalfHeight; out vec2 vUV; void main(){ vec2 p=(aPos-uView.xy)*uView.z; gl_Position=vec4(p.x/uView.w, -p.y/uHalfHeight, 0.0,1.0); vUV=aUV; }";
     const string FragmentShader = "#version 300 es\nprecision mediump float; in vec2 vUV; uniform sampler2D uTexture; out vec4 frag; void main(){ frag=texture(uTexture,vUV); }";
     static int Compile(int type,string source) {
         int shader=GLES30.GlCreateShader(type); GLES30.GlShaderSource(shader,source); GLES30.GlCompileShader(shader);
@@ -115,7 +115,7 @@ internal sealed class SpineGLRenderer : Java.Lang.Object, GLSurfaceView.IRendere
         program=GLES30.GlCreateProgram(); GLES30.GlAttachShader(program,vs); GLES30.GlAttachShader(program,fs); GLES30.GlLinkProgram(program);
         GLES30.GlDeleteShader(vs); GLES30.GlDeleteShader(fs);
         posAttr=GLES30.GlGetAttribLocation(program,"aPos"); uvAttr=GLES30.GlGetAttribLocation(program,"aUV");
-        sizeUniform=GLES30.GlGetUniformLocation(program,"uView"); samplerUniform=GLES30.GlGetUniformLocation(program,"uTexture");
+        sizeUniform=GLES30.GlGetUniformLocation(program,"uView"); halfHeightUniform=GLES30.GlGetUniformLocation(program,"uHalfHeight"); samplerUniform=GLES30.GlGetUniformLocation(program,"uTexture");
         GLES30.GlEnable(GLES30.GlBlend); GLES30.GlBlendFunc(GLES30.GlSrcAlpha,GLES30.GlOneMinusSrcAlpha);
         GLES30.GlDisable(GLES30.GlDepthTest);
     }
@@ -143,6 +143,7 @@ internal sealed class SpineGLRenderer : Java.Lang.Object, GLSurfaceView.IRendere
         GLES30.GlUseProgram(program);
         lock(sync) {
             GLES30.GlUniform4f(sizeUniform,centerX,centerY,scale,Math.Max(1,width)*0.5f);
+            GLES30.GlUniform1f(halfHeightUniform, Math.Max(1,height)*0.5f);
             // Vertex shader handles viewport aspect ratio.
             foreach(var (page,source) in batches) {
                 if(!pngs.TryGetValue(page,out var png)) continue;
