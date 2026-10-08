@@ -64,7 +64,7 @@ public sealed class MainPage : ContentPage
         imageButton.Clicked += ImportTexture;
         var binaryButton = new Button { Text = "Inspecionar .skel" };
         binaryButton.Clicked += ImportSkel;
-        texturedView.GetTriangles = () => use41 ? runtime41.TexturedTriangles() : Array.Empty<SpineTriangle>();
+        texturedView.GetTriangles = () => use41 ? runtime41.TexturedTriangles() : runtime.TexturedTriangles();
         var loadRuntime = new Button { Text = "Carregar runtime Spine 4.1 / 4.2" };
         loadRuntime.Clicked += LoadRuntime;
         var previousSkin = new Button { Text = "◀ Skin" };
@@ -89,7 +89,7 @@ public sealed class MainPage : ContentPage
             long now = frameClock.ElapsedTicks;
             float dt = Math.Clamp((float)((now - lastFrame) / (double)System.Diagnostics.Stopwatch.Frequency), 0f, 0.1f);
             lastFrame = now;
-            if (!playing || !Active.IsLoaded || !use41) return;
+            if (!playing || !Active.IsLoaded) return;
             Active.Step(dt);
             if (rendererChoice.SelectedIndex == 1) vulkanView.InvalidateSurface();
             else texturedView.InvalidateSurface();
@@ -285,7 +285,7 @@ public sealed class MainPage : ContentPage
         UpdateCatalogs(Active.Skins, Active.Animations, true);
         playing = false;
         play.Text = "▶ Reproduzir";
-        play.IsEnabled = use41 && Active.Animations.Count > 0;
+        play.IsEnabled = Active.Animations.Count > 0;
         texturedView.InvalidateSurface();
         status.Text = $"Spine {(use41 ? "4.1" : "4.2")} carregado: {Active.Skins.Count} skins, {Active.Animations.Count} animações.";
         return Task.CompletedTask;
