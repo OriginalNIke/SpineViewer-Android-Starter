@@ -10,6 +10,7 @@ public sealed class MainPage : ContentPage
     readonly Label atlasInfo = new() { Text = "Nenhum atlas importado", TextColor = Colors.LightGray };
     readonly Button play = new() { Text = "▶ Reproduzir (aguardando runtime)", IsEnabled = false };
     readonly List<string> selectedTextures = new();
+    readonly SpineTexturedRenderer texturedView = new();
     AtlasCatalog? atlas;
     string? atlasText;
     byte[]? skeletonContent;
@@ -36,26 +37,27 @@ public sealed class MainPage : ContentPage
         binaryButton.Clicked += ImportSkel;
         debugDrawable.GetLines = () => Active.BoneLines();
         skeletonView.Drawable = debugDrawable;
+        texturedView.GetTriangles = () => use41 ? runtime41.TexturedTriangles() : Array.Empty<SpineTriangle>();
         var loadRuntime = new Button { Text = "Carregar runtime Spine 4.1 / 4.2" };
         loadRuntime.Clicked += LoadRuntime;
         play.Text = "▶ Reproduzir";
         play.Clicked += (_, _) => { playing = !playing; play.Text = playing ? "⏸ Pausar" : "▶ Reproduzir"; };
         playbackTimer = Dispatcher.CreateTimer();
         playbackTimer.Interval = TimeSpan.FromMilliseconds(33);
-        playbackTimer.Tick += (_, _) => { if (!playing || !Active.IsLoaded) return; Active.Step(0.033f); skeletonView.Invalidate(); };
+        playbackTimer.Tick += (_, _) => { if (!playing || !Active.IsLoaded) return; Active.Step(0.033f); skeletonView.Invalidate(); texturedView.InvalidateSurface(); };
         playbackTimer.Start();
         Content = new ScrollView { Content = new VerticalStackLayout
         {
             Padding = new Thickness(18, 24), Spacing = 14,
             Children = { new Label { Text = "SpineViewer Android", FontSize = 25, FontAttributes = FontAttributes.Bold, TextColor = Colors.White },
-                json, atlasButton, imageButton, binaryButton, loadRuntime, skeletonView,
+                json, atlasButton, imageButton, binaryButton, loadRuntime, texturedView, skeletonView,
                 new Border { Stroke = Color.FromArgb("#374151"), BackgroundColor = Color.FromArgb("#1F2937"), Padding = 12,
                     Content = new VerticalStackLayout { Children = { texture, info } } },
                 atlasInfo, new Label { Text = "Skins", TextColor = Colors.White }, skins,
                 new Label { Text = "Animações", TextColor = Colors.White }, animations, play, status }
         }};
-        skins.SelectedIndexChanged += (_, _) => { if (skins.SelectedItem is not string s) return; Active.SetSkin(s); skeletonView.Invalidate(); status.Text = $"Skin: {s}"; };
-        animations.SelectedIndexChanged += (_, _) => { if (animations.SelectedItem is not string a) return; Active.SetAnimation(a); skeletonView.Invalidate(); status.Text = $"Animação: {a}"; };
+        skins.SelectedIndexChanged += (_, _) => { if (skins.SelectedItem is not string s) return; Active.SetSkin(s); skeletonView.Invalidate(); texturedView.InvalidateSurface(); status.Text = $"Skin: {s}"; };
+        animations.SelectedIndexChanged += (_, _) => { if (animations.SelectedItem is not string a) return; Active.SetAnimation(a); skeletonView.Invalidate(); texturedView.InvalidateSurface(); status.Text = $"Animação: {a}"; };
     }
     async void ImportJson(object? sender, EventArgs e)
     {
@@ -98,6 +100,7 @@ public sealed class MainPage : ContentPage
             var bytes = buffer.ToArray();
             texture.Source = ImageSource.FromStream(() => new MemoryStream(bytes, writable: false));
             selectedTextures.Add(file.FileName);
+            texturedView.SetTexture(file.FileName, bytes);
             UpdateTextureStatus();
         }
         catch (Exception ex) { await DisplayAlertAsync("Importação PNG", ex.Message, "OK"); }
@@ -117,8 +120,8 @@ public sealed class MainPage : ContentPage
             if(Active.Skins.Count>0) skins.SelectedIndex=0;
             if(Active.Animations.Count>0) animations.SelectedIndex=0;
             play.IsEnabled = Active.Animations.Count>0;
-            skeletonView.Invalidate();
-            status.Text = $"Spine {(use41 ? "4.1" : "4.2")} carregado: {Active.Skins.Count} skins, {Active.Animations.Count} animações. Prévia de ossos (sem texturas).";
+            skeletonView.Invalidate(); texturedView.InvalidateSurface();
+            status.Text = $"Spine {(use41 ? "4.1" : "4.2")} carregado: {Active.Skins.Count} skins, {Active.Animations.Count} animações. Renderização texturizada disponível para Spine 4.1; 4.2 permanece em modo ossos.";
         } catch(Exception ex) { await DisplayAlertAsync("Runtime Spine 4.2",ex.Message,"OK"); }
     }
     async void ImportSkel(object? sender, EventArgs e)

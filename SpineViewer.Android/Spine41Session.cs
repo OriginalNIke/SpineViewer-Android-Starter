@@ -8,6 +8,7 @@ public sealed class Spine41Session : ISpinePlayback {
  Skeleton? skeleton;
  AnimationState? state;
  public bool IsLoaded => skeleton != null;
+ public IReadOnlyList<SpineTriangle> TexturedTriangles() => Spine41Geometry.Extract(skeleton);
  public IReadOnlyList<string> Skins {get;private set;} = Array.Empty<string>();
  public IReadOnlyList<string> Animations {get;private set;} = Array.Empty<string>();
  public void Load(string atlasText, byte[] bytes, bool binary) {

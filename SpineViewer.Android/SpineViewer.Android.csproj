@@ -19,6 +19,7 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Maui.Controls" Version="10.0.0" />
+    <PackageReference Include="SkiaSharp.Views.Maui.Controls" Version="3.119.1" />
   </ItemGroup>
   <ItemGroup><ProjectReference Include="../SpineViewer.Core/SpineViewer.Core.csproj" /></ItemGroup>
   <ItemGroup><ProjectReference Include="../SpineViewer.Runtime42/SpineViewer.Runtime42.csproj" /></ItemGroup>
