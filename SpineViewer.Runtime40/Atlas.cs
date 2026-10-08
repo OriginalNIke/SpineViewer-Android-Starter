@@ -243,8 +243,10 @@ namespace SpineRuntime40 {
 					region.u = region.x / (float)page.width;
 					region.v = region.y / (float)page.height;
 					if (region.degrees == 90 || region.degrees == 270) {
-						region.u2 = (region.x + region.height) / (float)page.width;
-						region.v2 = (region.y + region.width) / (float)page.height;
+						// Atlas 4.0 bounds are the rectangle ON THE PAGE, even when rotated.
+						// Rotation affects attachment orientation, not the pixel rectangle.
+						region.u2 = (region.x + region.width) / (float)page.width;
+						region.v2 = (region.y + region.height) / (float)page.height;
 
 						int tempSwap = region.packedWidth;
 						region.packedWidth = region.packedHeight;
