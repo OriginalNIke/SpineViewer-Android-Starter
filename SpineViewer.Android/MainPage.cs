@@ -10,6 +10,7 @@ public sealed class MainPage : ContentPage
     readonly List<string> selectedTextures = new();
     readonly Dictionary<string, byte[]> vulkanTextures = new(StringComparer.OrdinalIgnoreCase);
     readonly SpineGLView texturedView = new();
+    readonly SpineVulkanView vulkanView = new() { IsVisible = false };
     readonly Label gpuInfo = new() { Text = "GPU: OpenGL ES 3.0", TextColor = Colors.LightGray };
     readonly Label fpsInfo = new() { Text = "FPS (atualizações): --", TextColor = Colors.LightGray };
     readonly Picker rendererChoice = new() { Title = "Renderizador", TextColor = Colors.White, TitleColor = Colors.LightGray };
@@ -32,16 +33,18 @@ public sealed class MainPage : ContentPage
         var folderButton = new Button { Text = "📁 Selecionar pasta do personagem" };
         var checkVulkan = new Button { Text = "Verificar suporte Vulkan" };
         checkVulkan.Clicked += (_, _) => gpuInfo.Text = VulkanSupport.GetStatus();
-        var vulkanPreview = new Button { Text = "Abrir visualização Vulkan" };
-        rendererChoice.ItemsSource = new List<string> { "OpenGL ES 3.0", "Vulkan (janela experimental)" };
+        rendererChoice.ItemsSource = new List<string> { "OpenGL ES 3.0", "Vulkan (integrado)" };
         rendererChoice.SelectedIndex = 0;
-        rendererChoice.SelectedIndexChanged += (_, _) => {
-            if (rendererChoice.SelectedIndex == 1) OpenVulkan();
-            else gpuInfo.Text = "GPU: OpenGL ES 3.0 (visualização principal)";
-        };
-        vulkanPreview.Clicked += (_, _) => {
-            OpenVulkan();
-        };
+        rendererChoice.SelectedIndexChanged += (_, _) => SelectRenderer();
+        vulkanView.GetTriangles = () => texturedView.GetTriangles();
+        vulkanView.GetTextures = () => vulkanTextures;
+        vulkanView.OnStatus = message => MainThread.BeginInvokeOnMainThread(() => {
+            gpuInfo.Text = message;
+            if (rendererChoice.SelectedIndex == 1 &&
+                (message.Contains("falha", StringComparison.OrdinalIgnoreCase) ||
+                 message.Contains("erro", StringComparison.OrdinalIgnoreCase)))
+                rendererChoice.SelectedIndex = 0;
+        });
         folderButton.Clicked += ImportFolder;
         var json = new Button { Text = "Importar JSON Spine" };
         json.Clicked += ImportJson;
@@ -68,8 +71,8 @@ public sealed class MainPage : ContentPage
             lastFrame = now;
             if (!playing || !Active.IsLoaded || !use41) return;
             Active.Step(dt);
-            texturedView.InvalidateSurface();
-            VulkanPreview.Render();
+            if (rendererChoice.SelectedIndex == 1) vulkanView.InvalidateSurface();
+            else texturedView.InvalidateSurface();
             frameSamples++;
             if ((now - fpsStart) >= System.Diagnostics.Stopwatch.Frequency)
             {
@@ -83,33 +86,25 @@ public sealed class MainPage : ContentPage
         {
             Padding = new Thickness(18, 24), Spacing = 14,
             Children = { new Label { Text = "SpineViewer Android", FontSize = 25, FontAttributes = FontAttributes.Bold, TextColor = Colors.White },
-                folderButton, json, atlasButton, imageButton, binaryButton, loadRuntime, rendererChoice, checkVulkan, vulkanPreview, gpuInfo, fpsInfo, texturedView,
+                folderButton, json, atlasButton, imageButton, binaryButton, loadRuntime, rendererChoice, checkVulkan, gpuInfo, fpsInfo, texturedView, vulkanView,
                 atlasInfo, new Label { Text = "Skins", TextColor = Colors.White }, skins,
                 new Label { Text = "Animações", TextColor = Colors.White }, animations, play, status }
         }};
-        skins.SelectedIndexChanged += (_, _) => { if (skins.SelectedItem is not string s) return; Active.SetSkin(s); texturedView.InvalidateSurface(); status.Text = $"Skin: {s}"; };
-        animations.SelectedIndexChanged += (_, _) => { if (animations.SelectedItem is not string a) return; Active.SetAnimation(a); texturedView.InvalidateSurface(); status.Text = $"Animação: {a}"; };
+        skins.SelectedIndexChanged += (_, _) => { if (skins.SelectedItem is not string s) return; Active.SetSkin(s); InvalidateActiveRenderer(); status.Text = $"Skin: {s}"; };
+        animations.SelectedIndexChanged += (_, _) => { if (animations.SelectedItem is not string a) return; Active.SetAnimation(a); InvalidateActiveRenderer(); status.Text = $"Animação: {a}"; };
     }
-    void OpenVulkan()
+    void SelectRenderer()
     {
-        try
-        {
-            VulkanPreview.Show(message => MainThread.BeginInvokeOnMainThread(() =>
-            {
-                gpuInfo.Text = message;
-                if (message.Contains("falha", StringComparison.OrdinalIgnoreCase) ||
-                    message.Contains("erro", StringComparison.OrdinalIgnoreCase))
-                {
-                    rendererChoice.SelectedIndex = 0;
-                    gpuInfo.Text += " — OpenGL disponível";
-                }
-            }), () => texturedView.GetTriangles(), () => vulkanTextures);
-        }
-        catch (Exception ex)
-        {
-            rendererChoice.SelectedIndex = 0;
-            gpuInfo.Text = "Vulkan indisponível: " + ex.Message + ". OpenGL disponível.";
-        }
+        bool vulkan = rendererChoice.SelectedIndex == 1;
+        texturedView.IsVisible = !vulkan;
+        vulkanView.IsVisible = vulkan;
+        gpuInfo.Text = vulkan ? "GPU: Vulkan (integrado, inicializando...)" : "GPU: OpenGL ES 3.0";
+        InvalidateActiveRenderer();
+    }
+    void InvalidateActiveRenderer()
+    {
+        if (rendererChoice.SelectedIndex == 1) vulkanView.InvalidateSurface();
+        else texturedView.InvalidateSurface();
     }
 
     async void ImportFolder(object? sender, EventArgs e)

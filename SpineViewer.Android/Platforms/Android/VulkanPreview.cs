@@ -4,6 +4,7 @@ using Android.App;
 using Android.Views;
 using Android.Runtime;
 using Android.Graphics;
+using Microsoft.Maui.Handlers;
 using SpineRuntime41;
 
 namespace SpineViewer.Android;
@@ -34,6 +35,7 @@ internal sealed class VulkanPreviewCallback : Java.Lang.Object, ISurfaceHolderCa
         this.status=status;this.triangles=triangles;this.pngs=pngs;
     }
     public void SurfaceCreated(ISurfaceHolder holder) {
+        VulkanPreview.SetActive(this);
         try {
             renderer=VulkanNative.Create(JNIEnv.Handle,holder.Surface!.Handle);
             if(renderer==IntPtr.Zero) {status("Vulkan: falha ao inicializar");return;}
@@ -48,7 +50,9 @@ internal sealed class VulkanPreviewCallback : Java.Lang.Object, ISurfaceHolderCa
         } catch(Exception ex) {status("Vulkan: "+ex.Message);}
     }
     public void SurfaceChanged(ISurfaceHolder holder, global::Android.Graphics.Format format,int w,int h) {width=Math.Max(1,w);height=Math.Max(1,h);}
-    public void SurfaceDestroyed(ISurfaceHolder holder) {
+    public void SurfaceDestroyed(ISurfaceHolder holder) => Release();
+    internal void Release() {
+        VulkanPreview.ClearActive(this);
         if(renderer!=IntPtr.Zero) {VulkanNative.Destroy(renderer);renderer=IntPtr.Zero;}
         uploaded.Clear();
     }
@@ -97,18 +101,64 @@ internal sealed class VulkanPreviewCallback : Java.Lang.Object, ISurfaceHolderCa
     }
 }
 
-internal static class VulkanPreview {
-    private static VulkanPreviewCallback? active;
-    public static void Render() => active?.Render();
-    public static void Show(Action<string> status, Func<IReadOnlyList<SpineTriangle>> triangles, Func<IReadOnlyDictionary<string,byte[]>> pngs) {
-        var activity=Platform.CurrentActivity??throw new InvalidOperationException("Activity indisponível");
-        var view=new SurfaceView(activity);
-        var callback=new VulkanPreviewCallback(status,triangles,pngs);
-        active=callback;
-        view.Holder!.AddCallback(callback);
-        var dialog=new Dialog(activity);
-        dialog.SetContentView(view,new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MatchParent,600));
-        dialog.DismissEvent+=(_,_)=>{if(ReferenceEquals(active,callback))active=null;};
-        dialog.Show();
+// Embedded Vulkan surface: MAUI owns the native SurfaceView and its lifetime.
+public sealed class SpineVulkanView : Microsoft.Maui.Controls.View
+{
+    internal SpineVulkanSurface? Surface;
+    public Func<IReadOnlyList<SpineTriangle>> GetTriangles { get; set; } = () => Array.Empty<SpineTriangle>();
+    public Func<IReadOnlyDictionary<string, byte[]>> GetTextures { get; set; } = () => new Dictionary<string, byte[]>();
+    public Action<string> OnStatus { get; set; } = _ => { };
+    public SpineVulkanView() { HeightRequest = 520; }
+    public void InvalidateSurface() => Surface?.Render();
+}
+
+public sealed class SpineVulkanHandler : ViewHandler<SpineVulkanView, SpineVulkanSurface>
+{
+    public static readonly IPropertyMapper<SpineVulkanView, SpineVulkanHandler> Mapper =
+        new PropertyMapper<SpineVulkanView, SpineVulkanHandler>(ViewMapper);
+    public SpineVulkanHandler() : base(Mapper) { }
+    protected override SpineVulkanSurface CreatePlatformView() => new(Context);
+    protected override void ConnectHandler(SpineVulkanSurface platformView)
+    {
+        base.ConnectHandler(platformView);
+        VirtualView.Surface = platformView;
+        platformView.Attach(VirtualView);
     }
+    protected override void DisconnectHandler(SpineVulkanSurface platformView)
+    {
+        platformView.Detach();
+        VirtualView.Surface = null;
+        base.DisconnectHandler(platformView);
+    }
+}
+
+public sealed class SpineVulkanSurface : SurfaceView
+{
+    VulkanPreviewCallback? callback;
+    public SpineVulkanSurface(global::Android.Content.Context context) : base(context) { }
+    public void Attach(SpineVulkanView view)
+    {
+        Detach();
+        callback = new VulkanPreviewCallback(view.OnStatus, () => view.GetTriangles(), () => view.GetTextures());
+        Holder?.AddCallback(callback);
+    }
+    public void Detach()
+    {
+        if (callback is null) return;
+        Holder?.RemoveCallback(callback);
+        callback.Release();
+        callback = null;
+    }
+    public void Render() => callback?.Render();
+}
+
+internal static class VulkanPreview
+{
+    private static VulkanPreviewCallback? active;
+    internal static void SetActive(VulkanPreviewCallback callback) => active = callback;
+    internal static void ClearActive(VulkanPreviewCallback callback)
+    {
+        if (ReferenceEquals(active, callback)) active = null;
+    }
+    public static void Render() => active?.Render();
 }
