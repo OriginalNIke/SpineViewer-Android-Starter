@@ -89,16 +89,8 @@ internal sealed class VulkanPreviewCallback : Java.Lang.Object, ISurfaceHolderCa
         try {
             foreach(var kv in pngs()) {
                 if(uploaded.Contains(kv.Key))continue;
-                using var bmp=BitmapFactory.DecodeByteArray(kv.Value,0,kv.Value.Length);
-                if(bmp==null)continue;
-                int[] pixels=new int[bmp.Width*bmp.Height];
-                bmp.GetPixels(pixels,0,bmp.Width,0,0,bmp.Width,bmp.Height);
-                byte[] rgba=new byte[pixels.Length*4];
-                for(int i=0;i<pixels.Length;i++) {
-                    uint p=unchecked((uint)pixels[i]);int j=i*4;
-                    rgba[j]=(byte)(p>>16);rgba[j+1]=(byte)(p>>8);rgba[j+2]=(byte)p;rgba[j+3]=(byte)(p>>24);
-                }
-                if(VulkanNative.SetTexture(renderer,kv.Key,rgba,bmp.Width,bmp.Height)==1)uploaded.Add(kv.Key);
+                byte[] rgba = SpineAtlasPixels.Decode(kv.Value, out int textureWidth, out int textureHeight);
+                if(VulkanNative.SetTexture(renderer,kv.Key,rgba,textureWidth,textureHeight)==1)uploaded.Add(kv.Key);
             }
             var tris=triangles();
             if(tris.Count>0) {
@@ -125,7 +117,7 @@ internal sealed class VulkanPreviewCallback : Java.Lang.Object, ISurfaceHolderCa
                 var camera = SpineCamera.Snapshot();
                 float effectiveScale = scale * camera.Zoom;
                 VulkanNative.SetFrame(renderer,vertexScratch,n,countScratch,modeScratch,pageScratch,batchCount,
-                    cx-camera.PanX/effectiveScale,cy-camera.PanY/effectiveScale,effectiveScale);
+                    cx-camera.PanX/effectiveScale,cy+camera.PanY/effectiveScale,effectiveScale);
             }
             if(VulkanNative.Draw(renderer)!=1)status("Vulkan: erro ao apresentar quadro");
             else presented();

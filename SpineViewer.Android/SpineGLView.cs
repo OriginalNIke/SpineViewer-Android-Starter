@@ -133,15 +133,18 @@ internal sealed class SpineGLRenderer : Java.Lang.Object, GLSurfaceView.IRendere
     int GetTexture(string name,byte[] png)
     {
         if(textureIds.TryGetValue(name,out int id)) return id;
-        using var bitmap=BitmapFactory.DecodeByteArray(png,0,png.Length);
-        if(bitmap==null) return 0;
+        byte[] rgba = SpineAtlasPixels.Decode(png, out int textureWidth, out int textureHeight);
         int[] ids=new int[1]; GLES30.GlGenTextures(1,ids,0); id=ids[0];
         GLES30.GlBindTexture(GLES30.GlTexture2d,id);
         GLES30.GlTexParameteri(GLES30.GlTexture2d,GLES30.GlTextureMinFilter,GLES30.GlLinear);
         GLES30.GlTexParameteri(GLES30.GlTexture2d,GLES30.GlTextureMagFilter,GLES30.GlLinear);
         GLES30.GlTexParameteri(GLES30.GlTexture2d,GLES30.GlTextureWrapS,GLES30.GlClampToEdge);
         GLES30.GlTexParameteri(GLES30.GlTexture2d,GLES30.GlTextureWrapT,GLES30.GlClampToEdge);
-        GLUtils.TexImage2D(GLES30.GlTexture2d,0,bitmap,0);
+        var pixels = ByteBuffer.AllocateDirect(rgba.Length);
+        pixels.Put(rgba);
+        pixels.Position(0);
+        GLES30.GlTexImage2D(GLES30.GlTexture2d, 0, GLES30.GlRgba,
+            textureWidth, textureHeight, 0, GLES30.GlRgba, GLES30.GlUnsignedByte, pixels);
         textureIds[name]=id; return id;
     }
     public void OnDrawFrame(Javax.Microedition.Khronos.Opengles.IGL10? gl)
