@@ -110,12 +110,22 @@ public sealed class MainPage : ContentPage
             }
         };
         playbackTimer.Start();
+        // Menu recolhível: controles de importação e diagnóstico não ocupam a área do personagem.
+        var menuButton = new Button { Text = "☰  Opções  ▾", HorizontalOptions = LayoutOptions.Fill };
+        var optionsPanel = new VerticalStackLayout { Spacing = 12, IsVisible = false,
+            Children = { folderButton, json, atlasButton, imageButton, binaryButton,
+                loadRuntime, rendererChoice, checkVulkan, gpuInfo, atlasInfo } };
+        menuButton.Clicked += (_, _) =>
+        {
+            optionsPanel.IsVisible = !optionsPanel.IsVisible;
+            menuButton.Text = optionsPanel.IsVisible ? "✕  Fechar opções  ▴" : "☰  Opções  ▾";
+        };
         Content = new ScrollView { Content = new VerticalStackLayout
         {
             Padding = new Thickness(18, 24), Spacing = 14,
             Children = { new Label { Text = "SpineViewer Android", FontSize = 25, FontAttributes = FontAttributes.Bold, TextColor = Colors.White },
-                folderButton, json, atlasButton, imageButton, binaryButton, loadRuntime, rendererChoice, checkVulkan, gpuInfo, fpsInfo, performanceInfo, texturedView, vulkanView,
-                atlasInfo,
+                menuButton, optionsPanel, texturedView, vulkanView,
+                fpsInfo, performanceInfo,
                 new Label { Text = "Skins", TextColor = Colors.White, FontAttributes = FontAttributes.Bold }, skinSearch, skinCount, skins,
                 new HorizontalStackLayout { Spacing = 8, Children = { previousSkin, nextSkin } },
                 new Label { Text = "Animações", TextColor = Colors.White, FontAttributes = FontAttributes.Bold }, animationSearch, animationCount, animations,
