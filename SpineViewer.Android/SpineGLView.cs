@@ -13,7 +13,7 @@ public sealed class SpineGLView : Microsoft.Maui.Controls.View
 {
     internal SpineGLSurface? Surface;
     public Func<IReadOnlyList<SpineTriangle>> GetTriangles { get; set; } = () => Array.Empty<SpineTriangle>();
-    public SpineGLView() { HeightRequest = 520; }
+    public SpineGLView() { HeightRequest = -1; }
     public void SetTexture(string name, byte[] png) => Surface?.SetTexture(name, png);
     public void InvalidateSurface() => Surface?.UpdateFrame(GetTriangles());
 }

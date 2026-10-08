@@ -131,19 +131,87 @@ public sealed class MainPage : ContentPage
             optionsPanel.IsVisible = !optionsPanel.IsVisible;
             menuButton.Text = optionsPanel.IsVisible ? "✕  Fechar opções  ▴" : "☰  Opções  ▾";
         };
-        Content = new ScrollView { Content = new VerticalStackLayout
+        // Layout responsivo: o visualizador recebe o espaço restante da tela.
+        // Os três seletores permanecem visíveis sem rolagem da página inteira.
+        var layout = new Grid
         {
-            Padding = new Thickness(18, 24), Spacing = 14,
-            Children = { menuButton, optionsPanel, texturedView, vulkanView,
-                fpsInfo, performanceInfo,
-                new Label { Text = "Personagens", TextColor = Colors.White, FontAttributes = FontAttributes.Bold }, characterCount, characters,
-                new HorizontalStackLayout { Spacing = 8, Children = { previousCharacter, nextCharacter } },
-                new Label { Text = "Skins", TextColor = Colors.White, FontAttributes = FontAttributes.Bold }, skinCount, skins,
-                new HorizontalStackLayout { Spacing = 8, Children = { previousSkin, nextSkin } },
-                new Label { Text = "Animações", TextColor = Colors.White, FontAttributes = FontAttributes.Bold }, animationCount, animations,
-                new HorizontalStackLayout { Spacing = 8, Children = { previousAnimation, nextAnimation } },
-                play, status }
-        }};
+            Padding = new Thickness(8, 4, 8, 8),
+            RowSpacing = 4,
+            RowDefinitions = new RowDefinitionCollection
+            {
+                new RowDefinition(GridLength.Auto),
+                new RowDefinition(GridLength.Auto),
+                new RowDefinition(GridLength.Star),
+                new RowDefinition(GridLength.Auto)
+            }
+        };
+        layout.Add(menuButton);
+        Grid.SetRow(menuButton, 0);
+        var optionsScroll = new ScrollView { Content = optionsPanel, MaximumHeightRequest = 210, IsVisible = false };
+        menuButton.Clicked += (_, _) => optionsScroll.IsVisible = optionsPanel.IsVisible;
+        layout.Add(optionsScroll);
+        Grid.SetRow(optionsScroll, 1);
+        var preview = new Grid();
+        preview.Add(texturedView);
+        preview.Add(vulkanView);
+        texturedView.HeightRequest = -1;
+        vulkanView.HeightRequest = -1;
+        texturedView.MinimumHeightRequest = 100;
+        vulkanView.MinimumHeightRequest = 100;
+        layout.Add(preview);
+        Grid.SetRow(preview, 2);
+
+        var selectors = new Grid
+        {
+            RowSpacing = 2,
+            ColumnSpacing = 4,
+            ColumnDefinitions = new ColumnDefinitionCollection
+            {
+                new ColumnDefinition(new GridLength(76)),
+                new ColumnDefinition(GridLength.Star),
+                new ColumnDefinition(new GridLength(42)),
+                new ColumnDefinition(new GridLength(42))
+            },
+            RowDefinitions = new RowDefinitionCollection
+            {
+                new RowDefinition(GridLength.Auto),
+                new RowDefinition(GridLength.Auto),
+                new RowDefinition(GridLength.Auto)
+            }
+        };
+        void AddSelector(int row, string title, Picker picker, Button previous, Button next)
+        {
+            var label = new Label { Text = title, TextColor = Colors.White, FontSize = 12,
+                VerticalTextAlignment = TextAlignment.Center };
+            previous.Text = "◀";
+            next.Text = "▶";
+            previous.Padding = new Thickness(0);
+            next.Padding = new Thickness(0);
+            previous.FontSize = 13;
+            next.FontSize = 13;
+            picker.FontSize = 13;
+            selectors.Add(label); Grid.SetRow(label, row); Grid.SetColumn(label, 0);
+            selectors.Add(picker); Grid.SetRow(picker, row); Grid.SetColumn(picker, 1);
+            selectors.Add(previous); Grid.SetRow(previous, row); Grid.SetColumn(previous, 2);
+            selectors.Add(next); Grid.SetRow(next, row); Grid.SetColumn(next, 3);
+        }
+        AddSelector(0, "Personagem", characters, previousCharacter, nextCharacter);
+        AddSelector(1, "Skin", skins, previousSkin, nextSkin);
+        AddSelector(2, "Animação", animations, previousAnimation, nextAnimation);
+        play.FontSize = 13;
+        play.Padding = new Thickness(8, 5);
+        var controls = new VerticalStackLayout { Spacing = 2,
+            Children = { selectors, play } };
+        layout.Add(controls);
+        Grid.SetRow(controls, 3);
+        // Diagnósticos continuam disponíveis no menu, sem ocupar a área de animação.
+        optionsPanel.Children.Add(fpsInfo);
+        optionsPanel.Children.Add(performanceInfo);
+        optionsPanel.Children.Add(characterCount);
+        optionsPanel.Children.Add(skinCount);
+        optionsPanel.Children.Add(animationCount);
+        optionsPanel.Children.Add(status);
+        Content = layout;
         skins.SelectedIndexChanged += (_, _) => { if (updatingSelection || skins.SelectedItem is not string s) return; Active.SetSkin(s); InvalidateActiveRenderer(); status.Text = $"Skin: {s}"; };
         animations.SelectedIndexChanged += (_, _) => { if (updatingSelection || animations.SelectedItem is not string a) return; Active.SetAnimation(a); InvalidateActiveRenderer(); status.Text = $"Animação: {a}"; };
     }

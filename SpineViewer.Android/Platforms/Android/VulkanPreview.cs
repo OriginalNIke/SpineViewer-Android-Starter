@@ -133,7 +133,7 @@ public sealed class SpineVulkanView : Microsoft.Maui.Controls.View
     public Func<IReadOnlyDictionary<string, byte[]>> GetTextures { get; set; } = () => new Dictionary<string, byte[]>();
     public Action<string> OnStatus { get; set; } = _ => { };
     public Action OnFramePresented { get; set; } = () => { };
-    public SpineVulkanView() { HeightRequest = 520; }
+    public SpineVulkanView() { HeightRequest = -1; }
     public void InvalidateSurface() => Surface?.Render();
 }
 
