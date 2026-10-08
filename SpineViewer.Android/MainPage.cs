@@ -15,6 +15,9 @@ public sealed class MainPage : ContentPage
     byte[]? skeletonContent;
     bool skeletonBinary;
     readonly Spine42Session runtime = new();
+    readonly Spine41Session runtime41 = new();
+    bool use41;
+    ISpinePlayback Active => use41 ? runtime41 : runtime;
     readonly SkeletonDebugDrawable debugDrawable = new();
     readonly GraphicsView skeletonView = new() { HeightRequest = 290 };
     bool playing;
@@ -31,15 +34,15 @@ public sealed class MainPage : ContentPage
         imageButton.Clicked += ImportTexture;
         var binaryButton = new Button { Text = "Inspecionar .skel" };
         binaryButton.Clicked += ImportSkel;
-        debugDrawable.Session = runtime;
+        debugDrawable.GetLines = () => Active.BoneLines();
         skeletonView.Drawable = debugDrawable;
-        var loadRuntime = new Button { Text = "Carregar runtime Spine 4.2" };
+        var loadRuntime = new Button { Text = "Carregar runtime Spine 4.1 / 4.2" };
         loadRuntime.Clicked += LoadRuntime;
         play.Text = "▶ Reproduzir";
         play.Clicked += (_, _) => { playing = !playing; play.Text = playing ? "⏸ Pausar" : "▶ Reproduzir"; };
         playbackTimer = Dispatcher.CreateTimer();
         playbackTimer.Interval = TimeSpan.FromMilliseconds(33);
-        playbackTimer.Tick += (_, _) => { if (!playing || !runtime.IsLoaded) return; runtime.Step(0.033f); skeletonView.Invalidate(); };
+        playbackTimer.Tick += (_, _) => { if (!playing || !Active.IsLoaded) return; Active.Step(0.033f); skeletonView.Invalidate(); };
         playbackTimer.Start();
         Content = new ScrollView { Content = new VerticalStackLayout
         {
@@ -51,8 +54,8 @@ public sealed class MainPage : ContentPage
                 atlasInfo, new Label { Text = "Skins", TextColor = Colors.White }, skins,
                 new Label { Text = "Animações", TextColor = Colors.White }, animations, play, status }
         }};
-        skins.SelectedIndexChanged += (_, _) => { if (skins.SelectedItem is not string s) return; runtime.SetSkin(s); skeletonView.Invalidate(); status.Text = $"Skin: {s}"; };
-        animations.SelectedIndexChanged += (_, _) => { if (animations.SelectedItem is not string a) return; runtime.SetAnimation(a); skeletonView.Invalidate(); status.Text = $"Animação: {a}"; };
+        skins.SelectedIndexChanged += (_, _) => { if (skins.SelectedItem is not string s) return; Active.SetSkin(s); skeletonView.Invalidate(); status.Text = $"Skin: {s}"; };
+        animations.SelectedIndexChanged += (_, _) => { if (animations.SelectedItem is not string a) return; Active.SetAnimation(a); skeletonView.Invalidate(); status.Text = $"Animação: {a}"; };
     }
     async void ImportJson(object? sender, EventArgs e)
     {
@@ -106,14 +109,16 @@ public sealed class MainPage : ContentPage
     }
     async void LoadRuntime(object? sender, EventArgs e) {
         try {
-            if(atlasText == null || skeletonContent == null) throw new InvalidOperationException("Importe primeiro um .atlas e um .json ou .skel da versão 4.2.");
-            runtime.Load(atlasText,skeletonContent,skeletonBinary);
-            skins.ItemsSource = runtime.Skins.ToList(); animations.ItemsSource = runtime.Animations.ToList();
-            if(runtime.Skins.Count>0) skins.SelectedIndex=0;
-            if(runtime.Animations.Count>0) animations.SelectedIndex=0;
-            play.IsEnabled = runtime.Animations.Count>0;
+            if(atlasText == null || skeletonContent == null) throw new InvalidOperationException("Importe primeiro um .atlas e um .json ou .skel da versão 4.1 ou 4.2.");
+            use41 = skeletonBinary && SpineBinaryInspector.Inspect(skeletonContent).Version?.StartsWith("4.1") == true;
+            if (use41) runtime41.Load(atlasText,skeletonContent,skeletonBinary);
+            else runtime.Load(atlasText,skeletonContent,skeletonBinary);
+            skins.ItemsSource = Active.Skins.ToList(); animations.ItemsSource = Active.Animations.ToList();
+            if(Active.Skins.Count>0) skins.SelectedIndex=0;
+            if(Active.Animations.Count>0) animations.SelectedIndex=0;
+            play.IsEnabled = Active.Animations.Count>0;
             skeletonView.Invalidate();
-            status.Text = $"Spine 4.2 carregado: {runtime.Skins.Count} skins, {runtime.Animations.Count} animações. Prévia de ossos (sem texturas).";
+            status.Text = $"Spine {(use41 ? "4.1" : "4.2")} carregado: {Active.Skins.Count} skins, {Active.Animations.Count} animações. Prévia de ossos (sem texturas).";
         } catch(Exception ex) { await DisplayAlertAsync("Runtime Spine 4.2",ex.Message,"OK"); }
     }
     async void ImportSkel(object? sender, EventArgs e)
@@ -126,7 +131,7 @@ public sealed class MainPage : ContentPage
             using var stream = await file.OpenReadAsync(); using var buffer = new MemoryStream(); await stream.CopyToAsync(buffer);
             skeletonContent = buffer.ToArray(); skeletonBinary = true;
             var result = SpineBinaryInspector.Inspect(skeletonContent);
-            status.Text = $"{file.FileName}: {result.ByteCount} bytes; versão provável: {result.Version ?? "não identificada"}. Decodificação .skel ainda pendente.";
+            status.Text = $"{file.FileName}: {result.ByteCount} bytes; versão provável: {result.Version ?? "não identificada"}. Pronto para carregar com o runtime compatível.";
         }
         catch (Exception ex) { await DisplayAlertAsync("Inspeção .skel", ex.Message, "OK"); }
     }

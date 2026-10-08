@@ -22,4 +22,5 @@
   </ItemGroup>
   <ItemGroup><ProjectReference Include="../SpineViewer.Core/SpineViewer.Core.csproj" /></ItemGroup>
   <ItemGroup><ProjectReference Include="../SpineViewer.Runtime42/SpineViewer.Runtime42.csproj" /></ItemGroup>
+  <ItemGroup><ProjectReference Include="../SpineViewer.Runtime41/SpineViewer.Runtime41.csproj" /></ItemGroup>
 </Project>

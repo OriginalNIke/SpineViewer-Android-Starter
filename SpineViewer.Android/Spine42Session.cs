@@ -1,7 +1,16 @@
 using SpineRuntime42;
 namespace SpineViewer.Android;
 // Runtime 4.2 real: computes animated bone transforms. Textured meshes are a separate milestone.
-public sealed class Spine42Session {
+public interface ISpinePlayback {
+ bool IsLoaded { get; }
+ IReadOnlyList<string> Skins { get; }
+ IReadOnlyList<string> Animations { get; }
+ void SetSkin(string name);
+ void SetAnimation(string name);
+ void Step(float dt);
+ IReadOnlyList<(float x,float y,float px,float py)> BoneLines();
+}
+public sealed class Spine42Session : ISpinePlayback {
     sealed class DeferredTextureLoader : TextureLoader {
         public void Load(AtlasPage page, string path) { /* Atlas UVs work without GPU texture upload. */ }
         public void Unload(object texture) { }
@@ -36,10 +45,10 @@ public sealed class Spine42Session {
     }
 }
 public sealed class SkeletonDebugDrawable : IDrawable {
-    public Spine42Session Session {get;set;} = new();
+    public Func<IReadOnlyList<(float x,float y,float px,float py)>> GetLines {get;set;} = () => Array.Empty<(float,float,float,float)>();
     public void Draw(ICanvas canvas, RectF dirtyRect) {
         canvas.FillColor = Color.FromArgb("#111827"); canvas.FillRectangle(dirtyRect);
-        var lines=Session.BoneLines(); if(lines.Count==0) return;
+        var lines=GetLines(); if(lines.Count==0) return;
         float minX=lines.Min(x=>Math.Min(x.x,x.px)), maxX=lines.Max(x=>Math.Max(x.x,x.px));
         float minY=lines.Min(x=>Math.Min(x.y,x.py)), maxY=lines.Max(x=>Math.Max(x.y,x.py));
         float scale=Math.Min((dirtyRect.Width-32)/Math.Max(1,maxX-minX),(dirtyRect.Height-32)/Math.Max(1,maxY-minY));
