@@ -33,9 +33,20 @@ struct Renderer {
     ANativeWindow* window = nullptr;
     VkRenderPass renderPass = VK_NULL_HANDLE;
     VkCommandPool commandPool = VK_NULL_HANDLE;
-    VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
-    VkSemaphore imageAvailable = VK_NULL_HANDLE;
-    VkFence frameFence = VK_NULL_HANDLE; // Signals completion before reusing the single command/vertex buffer.
+    static constexpr uint32_t FramesInFlight = 3;
+    struct Frame {
+        VkCommandBuffer command = VK_NULL_HANDLE;
+        VkSemaphore acquired = VK_NULL_HANDLE;
+        VkFence fence = VK_NULL_HANDLE;
+        VkBuffer vertices = VK_NULL_HANDLE;
+        VkDeviceMemory memory = VK_NULL_HANDLE;
+        VkDeviceSize capacity = 0;
+    };
+    std::array<Frame, FramesInFlight> frames{};
+    std::vector<VkSemaphore> renderFinished; // One semaphore per swapchain image.
+    std::vector<VkFence> imageFences;
+    uint32_t frameIndex = 0;
+    VkCommandBuffer commandBuffer = VK_NULL_HANDLE; // Temporary upload command buffer only.
     std::vector<VkImageView> views;
     std::vector<VkFramebuffer> framebuffers;
     // Vulkan textured Spine renderer resources.
@@ -53,9 +64,7 @@ struct Renderer {
     std::unordered_map<std::string, Texture> textures;
     struct Batch { std::string page; int blend; std::vector<float> xyuv; };
     std::vector<Batch> batches;
-    VkBuffer vertexBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory vertexMemory = VK_NULL_HANDLE;
-    VkDeviceSize vertexCapacity = 0;
+
     std::vector<uint8_t> vertSpv, fragSpv;
     float cx=0, cy=0, zoom=1;
 
@@ -278,22 +287,22 @@ struct Renderer {
         batches=std::move(next); cx=x;cy=y;zoom=z;
         return true;
     }
-    bool updateVertices() {
+    bool updateVertices(Frame& frame) {
         VkDeviceSize bytes=0;
         for(auto& b:batches) bytes+=b.xyuv.size()*sizeof(float);
         if(bytes==0) return true;
-        if(bytes>vertexCapacity) {
-            if(vertexBuffer) vkDestroyBuffer(device,vertexBuffer,nullptr);
-            if(vertexMemory) vkFreeMemory(device,vertexMemory,nullptr);
-            vertexBuffer=VK_NULL_HANDLE;vertexMemory=VK_NULL_HANDLE;
-            vertexCapacity=std::max(bytes,vertexCapacity*2);
-            if(!makeBuffer(vertexCapacity,VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,vertexBuffer,vertexMemory)) return false;
+        if(bytes>frame.capacity) {
+            if(frame.vertices) vkDestroyBuffer(device,frame.vertices,nullptr);
+            if(frame.memory) vkFreeMemory(device,frame.memory,nullptr);
+            frame.vertices=VK_NULL_HANDLE;frame.memory=VK_NULL_HANDLE;
+            frame.capacity=std::max(bytes,frame.capacity*2);
+            if(!makeBuffer(frame.capacity,VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,frame.vertices,frame.memory)) return false;
         }
         void* dst=nullptr;
-        if(vkMapMemory(device,vertexMemory,0,bytes,0,&dst)!=VK_SUCCESS) return false;
+        if(vkMapMemory(device,frame.memory,0,bytes,0,&dst)!=VK_SUCCESS) return false;
         auto* ptr=static_cast<uint8_t*>(dst);
         for(auto& b:batches) { memcpy(ptr,b.xyuv.data(),b.xyuv.size()*sizeof(float));ptr+=b.xyuv.size()*sizeof(float); }
-        vkUnmapMemory(device,vertexMemory);
+        vkUnmapMemory(device,frame.memory);
         return true;
     }
 
@@ -303,14 +312,17 @@ struct Renderer {
             vkDeviceWaitIdle(device);
             for(auto& kv:textures) releaseTexture(kv.second);
             textures.clear();
-            if(vertexBuffer) vkDestroyBuffer(device,vertexBuffer,nullptr);
-            if(vertexMemory) vkFreeMemory(device,vertexMemory,nullptr);
+            for (auto& f : frames) {
+                if(f.vertices) vkDestroyBuffer(device,f.vertices,nullptr);
+                if(f.memory) vkFreeMemory(device,f.memory,nullptr);
+                if(f.fence) vkDestroyFence(device,f.fence,nullptr);
+                if(f.acquired) vkDestroySemaphore(device,f.acquired,nullptr);
+            }
+            for(auto sem : renderFinished) if(sem) vkDestroySemaphore(device,sem,nullptr);
             if(descriptorPool) vkDestroyDescriptorPool(device,descriptorPool,nullptr);
             if(sampler) vkDestroySampler(device,sampler,nullptr);
             releasePipelines();
             if(descriptorLayout) vkDestroyDescriptorSetLayout(device,descriptorLayout,nullptr);
-            if (frameFence) vkDestroyFence(device, frameFence, nullptr);
-            if (imageAvailable) vkDestroySemaphore(device, imageAvailable, nullptr);
             if (commandPool) vkDestroyCommandPool(device, commandPool, nullptr);
             for (auto fb : framebuffers) vkDestroyFramebuffer(device, fb, nullptr);
             if (renderPass) vkDestroyRenderPass(device, renderPass, nullptr);
@@ -456,16 +468,30 @@ struct Renderer {
         alloc.commandBufferCount = 1;
         if (vkAllocateCommandBuffers(device, &alloc, &commandBuffer) != VK_SUCCESS) return false;
         VkSemaphoreCreateInfo sem{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
-        if (vkCreateSemaphore(device, &sem, nullptr, &imageAvailable) != VK_SUCCESS) return false;
         VkFenceCreateInfo fenceInfo{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
-        return vkCreateFence(device, &fenceInfo, nullptr, &frameFence) == VK_SUCCESS;
+        fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+        for(auto& f : frames) {
+            if(vkAllocateCommandBuffers(device,&alloc,&f.command)!=VK_SUCCESS) return false;
+            if(vkCreateSemaphore(device,&sem,nullptr,&f.acquired)!=VK_SUCCESS) return false;
+            if(vkCreateFence(device,&fenceInfo,nullptr,&f.fence)!=VK_SUCCESS) return false;
+        }
+        renderFinished.resize(images.size(), VK_NULL_HANDLE);
+        imageFences.resize(images.size(), VK_NULL_HANDLE);
+        for(auto& semaphore : renderFinished)
+            if(vkCreateSemaphore(device,&sem,nullptr,&semaphore)!=VK_SUCCESS) return false;
+        return true;
     }
     bool drawClearFrame() {
         if (!device || !swapchain) return false;
+        Frame& frame = frames[frameIndex];
+        if(vkWaitForFences(device,1,&frame.fence,VK_TRUE,UINT64_MAX)!=VK_SUCCESS) return false;
         uint32_t index = 0;
-        VkResult result = vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, imageAvailable, VK_NULL_HANDLE, &index);
+        VkResult result = vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, frame.acquired, VK_NULL_HANDLE, &index);
         if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) return false;
-        if (!updateVertices()) return false;
+        if(imageFences[index] && imageFences[index]!=frame.fence &&
+           vkWaitForFences(device,1,&imageFences[index],VK_TRUE,UINT64_MAX)!=VK_SUCCESS) return false;
+        if (!updateVertices(frame)) return false;
+        VkCommandBuffer commandBuffer = frame.command;
         if (vkResetCommandBuffer(commandBuffer, 0) != VK_SUCCESS) return false;
         VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
         if (vkBeginCommandBuffer(commandBuffer, &begin) != VK_SUCCESS) return false;
@@ -476,13 +502,13 @@ struct Renderer {
         render.renderPass = renderPass; render.framebuffer = framebuffers[index];
         render.renderArea.extent = extent; render.clearValueCount = 1; render.pClearValues = &clear;
         vkCmdBeginRenderPass(commandBuffer, &render, VK_SUBPASS_CONTENTS_INLINE);
-        if(pipelineLayout && vertexBuffer) {
+        if(pipelineLayout && frame.vertices) {
             VkViewport viewport{0,0,float(extent.width),float(extent.height),0,1};
             VkRect2D scissor{{0,0},extent};
             vkCmdSetViewport(commandBuffer,0,1,&viewport);
             vkCmdSetScissor(commandBuffer,0,1,&scissor);
             VkDeviceSize offset=0;
-            vkCmdBindVertexBuffers(commandBuffer,0,1,&vertexBuffer,&offset);
+            vkCmdBindVertexBuffers(commandBuffer,0,1,&frame.vertices,&offset);
             float view[5]={cx,cy,float(extent.width)*0.5f,float(extent.height)*0.5f,zoom};
             vkCmdPushConstants(commandBuffer,pipelineLayout,VK_SHADER_STAGE_VERTEX_BIT,0,sizeof(view),view);
             uint32_t first=0;
@@ -500,19 +526,23 @@ struct Renderer {
         if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) return false;
         VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
         VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
-        submit.waitSemaphoreCount = 1; submit.pWaitSemaphores = &imageAvailable;
+        submit.waitSemaphoreCount = 1; submit.pWaitSemaphores = &frame.acquired;
         submit.pWaitDstStageMask = &waitStage;
         submit.commandBufferCount = 1; submit.pCommandBuffers = &commandBuffer;
-        // A single in-flight frame is intentional: the host-visible vertex buffer and
-        // command buffer are shared. Wait for GPU completion before reusing them.
-        // This removes vkQueueWaitIdle from the frame loop without introducing races.
-        if (vkResetFences(device, 1, &frameFence) != VK_SUCCESS) return false;
-        if (vkQueueSubmit(queue, 1, &submit, frameFence) != VK_SUCCESS) return false;
-        if (vkWaitForFences(device, 1, &frameFence, VK_TRUE, UINT64_MAX) != VK_SUCCESS) return false;
+        VkSemaphore finished = renderFinished[index];
+        submit.signalSemaphoreCount = 1; submit.pSignalSemaphores = &finished;
+        if (vkResetFences(device, 1, &frame.fence) != VK_SUCCESS) return false;
+        if (vkQueueSubmit(queue, 1, &submit, frame.fence) != VK_SUCCESS) return false;
+        imageFences[index] = frame.fence;
         VkPresentInfoKHR present{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
+        present.waitSemaphoreCount = 1; present.pWaitSemaphores = &finished;
         present.swapchainCount = 1; present.pSwapchains = &swapchain; present.pImageIndices = &index;
         result = vkQueuePresentKHR(queue, &present);
-        return result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR;
+        if(result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR) {
+            frameIndex = (frameIndex + 1) % FramesInFlight;
+            return true;
+        }
+        return false;
     }
 };
 }

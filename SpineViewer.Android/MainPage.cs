@@ -13,6 +13,7 @@ public sealed class MainPage : ContentPage
     readonly SpineVulkanView vulkanView = new() { IsVisible = false };
     readonly Label gpuInfo = new() { Text = "GPU: OpenGL ES 3.0", TextColor = Colors.LightGray };
     readonly Label fpsInfo = new() { Text = "FPS (atualizações): --", TextColor = Colors.LightGray };
+    readonly Label performanceInfo = new() { Text = "Desempenho: aguardando quadros", TextColor = Colors.LightGreen };
     readonly Picker rendererChoice = new() { Title = "Renderizador", TextColor = Colors.White, TitleColor = Colors.LightGray };
     int frameSamples;
     long vulkanPresented;
@@ -80,9 +81,14 @@ public sealed class MainPage : ContentPage
             {
                 double seconds = (now - fpsStart) / (double)System.Diagnostics.Stopwatch.Frequency;
                 long presented = System.Threading.Interlocked.Exchange(ref vulkanPresented, 0);
+                double updates = frameSamples / seconds;
+                double presentations = presented / seconds;
                 fpsInfo.Text = rendererChoice.SelectedIndex == 1
-                    ? $"Vulkan: {presented / seconds:F1} apresentações/s | animação: {frameSamples / seconds:F1}/s"
-                    : $"OpenGL: {frameSamples / seconds:F1} atualizações/s (não mede apresentação)";
+                    ? $"Vulkan: {presentations:F1} apresentações/s | animação: {updates:F1}/s"
+                    : $"OpenGL: {updates:F1} atualizações/s (não mede apresentação)";
+                performanceInfo.Text = rendererChoice.SelectedIndex == 1
+                    ? $"Vulkan: {presentations:F1} apresentações/s | {((presentations > 0) ? 1000.0 / presentations : 0):F1} ms/apresentação (média) | até 3 frames em voo"
+                    : $"OpenGL: {updates:F1} atualizações/s | {((updates > 0) ? 1000.0 / updates : 0):F1} ms/atualização (média)";
                 frameSamples = 0; fpsStart = now;
             }
         };
@@ -91,7 +97,7 @@ public sealed class MainPage : ContentPage
         {
             Padding = new Thickness(18, 24), Spacing = 14,
             Children = { new Label { Text = "SpineViewer Android", FontSize = 25, FontAttributes = FontAttributes.Bold, TextColor = Colors.White },
-                folderButton, json, atlasButton, imageButton, binaryButton, loadRuntime, rendererChoice, checkVulkan, gpuInfo, fpsInfo, texturedView, vulkanView,
+                folderButton, json, atlasButton, imageButton, binaryButton, loadRuntime, rendererChoice, checkVulkan, gpuInfo, fpsInfo, performanceInfo, texturedView, vulkanView,
                 atlasInfo, new Label { Text = "Skins", TextColor = Colors.White }, skins,
                 new Label { Text = "Animações", TextColor = Colors.White }, animations, play, status }
         }};
