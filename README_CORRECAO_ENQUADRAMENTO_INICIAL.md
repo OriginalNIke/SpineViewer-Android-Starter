@@ -1,0 +1,1 @@
+Corrige enquadramento cortado no primeiro carregamento Vulkan: SurfaceCreated obtém dimensões da superfície; SurfaceChanged força novo desenho ao receber tamanho real. Minimizar e restaurar já recriava a superfície, explicando o comportamento observado. Testar no dispositivo.

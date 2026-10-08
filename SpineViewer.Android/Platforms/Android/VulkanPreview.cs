@@ -71,11 +71,22 @@ internal sealed class VulkanPreviewCallback : Java.Lang.Object, ISurfaceHolderCa
             vert.CopyTo(vb);frag.CopyTo(fb);
             byte[] v=vb.ToArray(),f=fb.ToArray();
             if(VulkanNative.SetShaders(renderer,v,v.Length,f,f.Length)!=1) {status("Vulkan: erro nos shaders/pipelines");return;}
+            var frame = holder.SurfaceFrame;
+            if (frame != null) {
+                width = Math.Max(1, frame.Width());
+                height = Math.Max(1, frame.Height());
+            }
             Render();
             status("Vulkan: pipelines e shaders SPIR-V carregados");
         } catch(Exception ex) {status("Vulkan: "+ex.Message);}
     }
-    public void SurfaceChanged(ISurfaceHolder holder, global::Android.Graphics.Format format,int w,int h) {width=Math.Max(1,w);height=Math.Max(1,h);}
+    public void SurfaceChanged(ISurfaceHolder holder, global::Android.Graphics.Format format,int w,int h) {
+        width=Math.Max(1,w);
+        height=Math.Max(1,h);
+        // A primeira renderização pode ocorrer antes de SurfaceChanged, com 1x1.
+        // Renderizar novamente quando o Android informa as dimensões reais.
+        Render();
+    }
     public void SurfaceDestroyed(ISurfaceHolder holder) => Release();
     internal void Release() {
         VulkanPreview.ClearActive(this);
