@@ -21,6 +21,8 @@
 namespace {
 struct Renderer {
     float background[3] = {17.f/255.f, 24.f/255.f, 39.f/255.f};
+    std::string backgroundTexture;
+    float backgroundAspect = 1.f;
     VkInstance instance = VK_NULL_HANDLE;
     VkPhysicalDevice physical = VK_NULL_HANDLE;
     VkDevice device = VK_NULL_HANDLE;
@@ -285,6 +287,21 @@ struct Renderer {
             next.push_back(std::move(b)); offset+=n;
         }
         if(offset!=floatCount) return false;
+        if (!backgroundTexture.empty() && z > 0 && extent.width && extent.height) {
+            float screenAspect = float(extent.width)/float(extent.height);
+            float u0=0,u1=1,v0=0,v1=1;
+            if (backgroundAspect > screenAspect) {
+                float f=screenAspect/backgroundAspect;u0=(1-f)*0.5f;u1=1-u0;
+            } else {
+                float f=backgroundAspect/screenAspect;v0=(1-f)*0.5f;v1=1-v0;
+            }
+            float hx=float(extent.width)/(2*z),hy=float(extent.height)/(2*z);
+            float l=x-hx,rr=x+hx,b=y-hy,t=y+hy;
+            Batch bg;bg.page=backgroundTexture;bg.blend=0;
+            bg.xyuv={l,b,u0,v1,rr,b,u1,v1,rr,t,u1,v0,
+                     l,b,u0,v1,rr,t,u1,v0,l,t,u0,v0};
+            next.insert(next.begin(),std::move(bg));
+        }
         batches=std::move(next); cx=x;cy=y;zoom=z;
         return true;
     }
@@ -568,6 +585,12 @@ void spine_vk_set_background(void* handle, float red, float green, float blue) {
     auto* r = static_cast<Renderer*>(handle);
     if (!r) return;
     r->background[0] = red; r->background[1] = green; r->background[2] = blue;
+}
+void spine_vk_set_background_image(void* handle, const char* name, float aspect) {
+    auto* r=static_cast<Renderer*>(handle);
+    if(!r) return;
+    r->backgroundTexture=name ? name : "";
+    r->backgroundAspect=std::max(0.001f,aspect);
 }
 int spine_vk_draw_clear(void* handle) {
     auto* r = static_cast<Renderer*>(handle);

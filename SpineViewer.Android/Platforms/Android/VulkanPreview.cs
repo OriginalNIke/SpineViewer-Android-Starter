@@ -14,6 +14,8 @@ internal static class VulkanNative {
     internal static extern IntPtr Create(IntPtr env, IntPtr surface);
     [DllImport("spine_vulkan", EntryPoint="spine_vk_set_background")]
     internal static extern void SetBackground(IntPtr renderer, float red, float green, float blue);
+    [DllImport("spine_vulkan", EntryPoint="spine_vk_set_background_image", CharSet=CharSet.Ansi)]
+    internal static extern void SetBackgroundImage(IntPtr renderer, [MarshalAs(UnmanagedType.LPUTF8Str)] string name, float aspect);
     [DllImport("spine_vulkan", EntryPoint="spine_vk_draw_clear")]
     internal static extern int Draw(IntPtr renderer);
     [DllImport("spine_vulkan", EntryPoint="spine_vk_destroy")]
@@ -40,6 +42,7 @@ internal sealed class VulkanPreviewCallback : Java.Lang.Object, ISurfaceHolderCa
     private IntPtr[] pageScratch = Array.Empty<IntPtr>();
     private readonly Dictionary<string, IntPtr> pagePointers = new(StringComparer.OrdinalIgnoreCase);
     private int width=1,height=1;
+    private int bgVersion = -1;
     private static int Grow(int current, int required) {
         int size = Math.Max(16, current);
         while (size < required) size = checked(size * 2);
@@ -99,6 +102,20 @@ internal sealed class VulkanPreviewCallback : Java.Lang.Object, ISurfaceHolderCa
         if(renderer==IntPtr.Zero)return;
         try {
             VulkanNative.SetBackground(renderer, SpineBackground.R, SpineBackground.G, SpineBackground.B);
+            var bgPng=SpineBackgroundImage.Png;
+            if (bgPng == null) {
+                if (bgVersion != SpineBackgroundImage.Version) {
+                    VulkanNative.SetBackgroundImage(renderer, "", 1);
+                    bgVersion = SpineBackgroundImage.Version;
+                }
+            } else if (bgVersion != SpineBackgroundImage.Version) {
+                var rgba=SpineAtlasPixels.Decode(bgPng,out int bw,out int bh);
+                string key="__background_"+SpineBackgroundImage.Version;
+                if (VulkanNative.SetTexture(renderer,key,rgba,bw,bh)==1) {
+                    VulkanNative.SetBackgroundImage(renderer,key,(float)bw/bh);
+                    bgVersion=SpineBackgroundImage.Version;
+                }
+            }
             foreach(var kv in pngs()) {
                 if(uploaded.Contains(kv.Key))continue;
                 byte[] rgba = SpineAtlasPixels.Decode(kv.Value, out int textureWidth, out int textureHeight);

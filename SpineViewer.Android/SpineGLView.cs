@@ -68,6 +68,7 @@ internal sealed class SpineGLRenderer : Java.Lang.Object, GLSurfaceView.IRendere
     readonly List<(string page, BlendMode blend, float[] vertices)> batches = new();
     int program, posAttr, uvAttr, samplerUniform, sizeUniform, halfHeightUniform;
     int vertexBuffer;
+    int backgroundVersion = -1;
     int width = 1, height = 1;
     float centerX, centerY, scale = 1;
     public void SetTexture(string name, byte[] bytes)
@@ -116,6 +117,7 @@ internal sealed class SpineGLRenderer : Java.Lang.Object, GLSurfaceView.IRendere
     public void OnSurfaceCreated(Javax.Microedition.Khronos.Opengles.IGL10? gl, Javax.Microedition.Khronos.Egl.EGLConfig? config)
     {
         textureIds.Clear();
+        backgroundVersion = -1;
         int[] vboIds = new int[1];
         GLES30.GlGenBuffers(1, vboIds, 0);
         vertexBuffer = vboIds[0];
@@ -161,6 +163,32 @@ internal sealed class SpineGLRenderer : Java.Lang.Object, GLSurfaceView.IRendere
             float effectiveScale = scale * camera.Zoom;
             GLES30.GlUniform4f(sizeUniform,centerX-camera.PanX/effectiveScale,centerY+camera.PanY/effectiveScale,effectiveScale,Math.Max(1,width)*0.5f);
             GLES30.GlUniform1f(halfHeightUniform, Math.Max(1,height)*0.5f);
+            // Image is rendered first, using the same textured pipeline as Spine.
+            var bg = SpineBackgroundImage.Png;
+            if (bg != null) {
+                if (backgroundVersion != SpineBackgroundImage.Version) {
+                    if (textureIds.Remove(SpineBackgroundImage.TextureKey, out int previous))
+                        GLES30.GlDeleteTextures(1, new[] { previous }, 0);
+                    backgroundVersion = SpineBackgroundImage.Version;
+                }
+                int bgId = GetTexture(SpineBackgroundImage.TextureKey, bg);
+                if (bgId != 0) {
+                    float cx = centerX-camera.PanX/effectiveScale;
+                    float cy = centerY+camera.PanY/effectiveScale;
+                    float[] quad = SpineBackgroundImage.Quad(cx,cy,effectiveScale,width,height);
+                    var buffer=ByteBuffer.AllocateDirect(quad.Length*4).Order(ByteOrder.NativeOrder()).AsFloatBuffer();
+                    buffer.Put(quad);buffer.Position(0);
+                    GLES30.GlBlendFunc(GLES30.GlSrcAlpha,GLES30.GlOneMinusSrcAlpha);
+                    GLES30.GlBindBuffer(GLES30.GlArrayBuffer,vertexBuffer);
+                    GLES30.GlBufferData(GLES30.GlArrayBuffer,quad.Length*4,buffer,GLES30.GlStreamDraw);
+                    GLES30.GlActiveTexture(GLES30.GlTexture0);GLES30.GlBindTexture(GLES30.GlTexture2d,bgId);
+                    GLES30.GlUniform1i(samplerUniform,0);
+                    GLES30.GlEnableVertexAttribArray(posAttr);GLES30.GlEnableVertexAttribArray(uvAttr);
+                    GLES30.GlVertexAttribPointer(posAttr,2,GLES30.GlFloat,false,16,0);
+                    GLES30.GlVertexAttribPointer(uvAttr,2,GLES30.GlFloat,false,16,8);
+                    GLES30.GlDrawArrays(GLES30.GlTriangles,0,6);
+                }
+            }
             // Vertex shader handles viewport aspect ratio.
             foreach(var (page,blend,source) in batches) {
                 switch (blend) {

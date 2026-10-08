@@ -169,12 +169,43 @@ public sealed class MainPage : ContentPage
         };
         int selectedPreset = Array.FindIndex(backgroundPresets, p => p.Rgb == savedBackground);
         backgroundPicker.SelectedIndex = selectedPreset >= 0 ? selectedPreset : backgroundPresets.Length - 1;
+        // Persist image in app storage; never rely on temporary picker URIs.
+        string backgroundFile = Path.Combine(FileSystem.AppDataDirectory, "viewer_background.img");
+        if (File.Exists(backgroundFile)) {
+            try { SpineBackgroundImage.Set(File.ReadAllBytes(backgroundFile)); }
+            catch { try { File.Delete(backgroundFile); } catch { } }
+        }
+        var selectBackgroundImage = new Button { Text = "🖼 Escolher imagem de fundo (PNG/JPG/WebP)" };
+        var clearBackgroundImage = new Button { Text = "Remover imagem de fundo" };
+        selectBackgroundImage.Clicked += async (_, _) => {
+            try {
+                var file = await FilePicker.Default.PickAsync(new PickOptions {
+                    PickerTitle = "Escolha a imagem de fundo",
+                    FileTypes = new FilePickerFileType(new Dictionary<DevicePlatform, IEnumerable<string>> {
+                        { DevicePlatform.Android, new[] { "image/png", "image/jpeg", "image/webp" } }
+                    }) });
+                if (file == null) return;
+                await using var input = await file.OpenReadAsync();
+                using var memory = new MemoryStream();
+                await input.CopyToAsync(memory);
+                if (memory.Length > 20*1024*1024) throw new InvalidOperationException("Imagem maior que 20 MB.");
+                var bytes = memory.ToArray();
+                SpineBackgroundImage.Set(bytes);
+                await File.WriteAllBytesAsync(backgroundFile, bytes);
+                InvalidateActiveRenderer();
+            } catch (Exception ex) { await DisplayAlertAsync("Imagem de fundo", ex.Message, "OK"); }
+        };
+        clearBackgroundImage.Clicked += (_, _) => {
+            SpineBackgroundImage.Set(null);
+            if (File.Exists(backgroundFile)) File.Delete(backgroundFile);
+            InvalidateActiveRenderer();
+        };
         // Menu recolhível: controles de importação e diagnóstico não ocupam a área do personagem.
         var menuButton = new Button { Text = "☰  Opções  ▾", HorizontalOptions = LayoutOptions.Fill };
         var optionsPanel = new VerticalStackLayout { Spacing = 12, IsVisible = false,
             Children = { folderButton, json, atlasButton, imageButton, binaryButton,
                 rendererChoice, new Label { Text = "Fundo da animação", TextColor = Colors.White },
-                backgroundPicker, customBackground, applyBackground, checkVulkan, gpuInfo, atlasInfo } };
+                backgroundPicker, customBackground, applyBackground, selectBackgroundImage, clearBackgroundImage, checkVulkan, gpuInfo, atlasInfo } };
         menuButton.Clicked += (_, _) =>
         {
             optionsPanel.IsVisible = !optionsPanel.IsVisible;
