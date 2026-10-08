@@ -45,3 +45,7 @@ O ZIP original SpineViewer utiliza WPF/SFML e referências x64. Não foram copia
 O workflow anterior ainda publicava `net8.0-android` apesar do projeto usar `net10.0-android`.
 Esta revisão alinha ambos para .NET 10 e adiciona a referência explícita ao pacote `Microsoft.Maui.Controls`.
 Se o GitHub executar `-f net8.0-android`, confirme que o workflow atualizado substituiu o antigo na branch utilizada.
+
+## Android launcher fix
+
+This revision adds the Android entry points (`MainActivity` with `MainLauncher=true` and `MainApplication`), a manifest, and a MAUI app icon. Build through GitHub Actions, uninstall the previous app from the device, then install the new APK. This fixes missing launcher declarations in the project; it has not been verified by an Android device build.
