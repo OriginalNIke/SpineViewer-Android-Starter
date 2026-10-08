@@ -12,6 +12,7 @@ public sealed class MainPage : ContentPage
     readonly Label characterCount = new() { Text = "Nenhum personagem", TextColor = Colors.LightGray, FontSize = 12 };
     IReadOnlyList<FolderImporter.Entry>? folderFiles;
     bool updatingCharacter;
+    bool loadingCharacter;
     IReadOnlyList<string> allSkins = Array.Empty<string>();
     IReadOnlyList<string> allAnimations = Array.Empty<string>();
     bool updatingSelection;
@@ -68,8 +69,6 @@ public sealed class MainPage : ContentPage
         var binaryButton = new Button { Text = "Inspecionar .skel" };
         binaryButton.Clicked += ImportSkel;
         texturedView.GetTriangles = () => use41 ? runtime41.TexturedTriangles() : runtime.TexturedTriangles();
-        var loadRuntime = new Button { Text = "Carregar runtime Spine 4.1 / 4.2" };
-        loadRuntime.Clicked += LoadRuntime;
         var previousSkin = new Button { Text = "◀ Skin" };
         var nextSkin = new Button { Text = "Skin ▶" };
         var previousAnimation = new Button { Text = "◀ Animação" };
@@ -85,9 +84,11 @@ public sealed class MainPage : ContentPage
         nextCharacter.Clicked += (_, _) => MoveSelection(characters, 1);
         characters.SelectedIndexChanged += async (_, _) =>
         {
-            if (updatingCharacter || folderFiles is null || characters.SelectedItem is not string name) return;
+            if (updatingCharacter || loadingCharacter || folderFiles is null || characters.SelectedItem is not string name) return;
+            loadingCharacter = true;
             try { await LoadCharacterFromFolderAsync(folderFiles, name); }
             catch (Exception ex) { await DisplayAlertAsync("Trocar personagem", ex.Message, "OK"); }
+            finally { loadingCharacter = false; }
         };
         play.Text = "▶ Reproduzir";
         play.Clicked += (_, _) => { playing = !playing; play.Text = playing ? "⏸ Pausar" : "▶ Reproduzir"; };
@@ -126,7 +127,7 @@ public sealed class MainPage : ContentPage
         var menuButton = new Button { Text = "☰  Opções  ▾", HorizontalOptions = LayoutOptions.Fill };
         var optionsPanel = new VerticalStackLayout { Spacing = 12, IsVisible = false,
             Children = { folderButton, json, atlasButton, imageButton, binaryButton,
-                loadRuntime, rendererChoice, checkVulkan, gpuInfo, atlasInfo } };
+                rendererChoice, checkVulkan, gpuInfo, atlasInfo } };
         menuButton.Clicked += (_, _) =>
         {
             optionsPanel.IsVisible = !optionsPanel.IsVisible;
@@ -301,6 +302,7 @@ public sealed class MainPage : ContentPage
             var catalog = SpineJsonCatalog.Read(jsonText, file.FileName);
             UpdateCatalogs(catalog.Skins.ToList(), catalog.Animations.ToList(), false);
             status.Text = $"{catalog.Name}: {catalog.Skins.Count} skins e {catalog.Animations.Count} animações.";
+            TryLoadImportedRuntime();
         }
         catch (Exception ex) { await DisplayAlertAsync("Importação JSON", ex.Message, "OK"); }
     }
@@ -315,6 +317,7 @@ public sealed class MainPage : ContentPage
             atlasText = await reader.ReadToEndAsync(); atlas = SpineAtlasCatalog.Read(atlasText);
             atlasInfo.Text = $"Atlas: {atlas.Pages.Count} página(s), {atlas.Pages.Sum(p => p.Regions.Count)} região(ões). Páginas: {string.Join(", ", atlas.Pages.Select(p => p.Name))}";
             UpdateTextureStatus();
+            TryLoadImportedRuntime();
         }
         catch (Exception ex) { await DisplayAlertAsync("Importação atlas", ex.Message, "OK"); }
     }
@@ -331,6 +334,7 @@ public sealed class MainPage : ContentPage
             texturedView.SetTexture(file.FileName, bytes);
             vulkanTextures[file.FileName] = bytes;
             UpdateTextureStatus();
+            TryLoadImportedRuntime();
         }
         catch (Exception ex) { await DisplayAlertAsync("Importação PNG", ex.Message, "OK"); }
     }
@@ -339,16 +343,23 @@ public sealed class MainPage : ContentPage
         var matches = atlas?.Pages.Count(p => selectedTextures.Any(t => string.Equals(t, p.Name, StringComparison.OrdinalIgnoreCase))) ?? 0;
         status.Text = $"Texturas: {selectedTextures.Count}; páginas do atlas correspondentes: {matches}/{atlas?.Pages.Count ?? 0}.";
     }
-    async void LoadRuntime(object? sender, EventArgs e)
+    void TryLoadImportedRuntime()
     {
-        try { await LoadRuntimeCoreAsync(); }
-        catch (Exception ex) { await DisplayAlertAsync("Runtime Spine", ex.Message, "OK"); }
+        // Importações individuais: carregar assim que esqueleto, atlas e todas as páginas estiverem disponíveis.
+        if (atlas is null || atlasText is null || skeletonContent is null) return;
+        if (!atlas.Pages.All(p => selectedTextures.Any(t => string.Equals(t, p.Name, StringComparison.OrdinalIgnoreCase)))) return;
+        LoadRuntimeCoreAsync().GetAwaiter().GetResult();
     }
+
     Task LoadRuntimeCoreAsync()
     {
         if (atlasText == null || skeletonContent == null)
             throw new InvalidOperationException("Importe primeiro um .atlas e um .json ou .skel.");
-        use41 = skeletonBinary && SpineBinaryInspector.Inspect(skeletonContent).Version?.StartsWith("4.1") == true;
+        var detectedVersion = skeletonBinary ? SpineBinaryInspector.Inspect(skeletonContent).Version : null;
+        if (skeletonBinary && detectedVersion is not null &&
+            !detectedVersion.StartsWith("4.1") && !detectedVersion.StartsWith("4.2"))
+            throw new NotSupportedException($"Spine {detectedVersion} não suportado. Use arquivos 4.1 ou 4.2.");
+        use41 = skeletonBinary && detectedVersion?.StartsWith("4.1") == true;
         if (use41) runtime41.Load(atlasText, skeletonContent, skeletonBinary);
         else runtime.Load(atlasText, skeletonContent, skeletonBinary);
         UpdateCatalogs(Active.Skins, Active.Animations, true);
@@ -369,7 +380,8 @@ public sealed class MainPage : ContentPage
             using var stream = await file.OpenReadAsync(); using var buffer = new MemoryStream(); await stream.CopyToAsync(buffer);
             skeletonContent = buffer.ToArray(); skeletonBinary = true;
             var result = SpineBinaryInspector.Inspect(skeletonContent);
-            status.Text = $"{file.FileName}: {result.ByteCount} bytes; versão provável: {result.Version ?? "não identificada"}. Pronto para carregar com o runtime compatível.";
+            status.Text = $"{file.FileName}: {result.ByteCount} bytes; versão provável: {result.Version ?? "não identificada"}.";
+            TryLoadImportedRuntime();
         }
         catch (Exception ex) { await DisplayAlertAsync("Inspeção .skel", ex.Message, "OK"); }
     }
