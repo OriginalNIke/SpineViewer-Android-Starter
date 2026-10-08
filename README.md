@@ -1,51 +1,13 @@
-# SpineViewer Android — projeto inicial
+# SpineViewer Android — etapa de importação e prévia de texturas
 
-## Estado real
+Base MAUI .NET 10 com importação de Spine JSON (catálogo de skins/animações), leitura de `.atlas` (páginas/regiões), seleção de PNG e prévia estática, inspeção preliminar do cabeçalho `.skel`.
 
-**Protótipo de interface, não um visualizador Spine funcional ainda.**
+**Ainda NÃO há reprodução gráfica de animações Spine, troca visual de skins, recorte de regiões atlas ou decodificação de esqueletos binários.** O botão Reproduzir permanece desabilitado intencionalmente. A leitura de atlas é preliminar e pode não aceitar todos os formatos. A detecção da versão `.skel` é apenas heurística.
 
-Implementado:
-- App Android .NET MAUI com tela touchscreen.
-- Importação de arquivo `.json` Spine via seletor de arquivos Android.
-- Leitura de nomes de skins e animações em JSON Spine (skins em objeto ou array).
-- Pickers para selecionar nomes de skins e animações.
-- Workflow GitHub Actions para tentar compilar um APK não assinado.
+## Próxima etapa técnica
 
-Pendente:
-- Runtime Spine compatível com Android e tratamento de `.skel`.
-- Importação e resolução de `.atlas` e texturas PNG.
-- Renderização de malhas, attachments e texturas via OpenGL ES.
-- Reprodução, atualização de skeleton e troca visual de skins.
-- Testes de build, testes em dispositivos e assinatura de APK para distribuição.
+Integrar um runtime Spine licenciado/compatível com Android e a versão exportada do arquivo; fornecer carregamento de SkeletonData (JSON/binário), AtlasAttachmentLoader, AnimationState, cálculo de world transforms, clipping, mesh e renderizador GPU para atlas. Verificar as licenças antes de redistribuir código/runtime do SpineViewer original.
 
-## Compilar
+## Compilação
 
-1. Publique **o conteúdo desta pasta** em um repositório GitHub (não somente o ZIP).
-2. Abra **Actions > Android APK (starter) > Run workflow**.
-3. Se a compilação passar, baixe o artefato `SpineViewer-Android-unsigned`.
-4. Alternativamente, use .NET SDK 8 com workload `maui-android` e execute:
-
-```sh
-dotnet publish SpineViewer.Android/SpineViewer.Android.csproj -f net10.0-android -c Release -p:AndroidPackageFormat=apk
-```
-
-O ambiente usado para preparar este ZIP não possui `dotnet`, então **o build ainda não foi verificado**. Dependências do Android SDK/workload podem precisar de ajustes no runner.
-
-## Arquitetura planejada
-
-- `SpineViewer.Core`: catálogo e contratos independentes da interface.
-- `SpineViewer.Android`: app e acesso a arquivos.
-- Próxima fase: `SpineViewer.Rendering` e `SpineViewer.Runtimes` (não implementados).
-
-## Código original
-
-O ZIP original SpineViewer utiliza WPF/SFML e referências x64. Não foram copiadas as implementações originais nesta primeira base, porque a integração exige remover dependências gráficas Windows, analisar licenças e adaptar o runtime. Preserve o ZIP original para a próxima etapa.
-
-### Correção do GitHub Actions
-O workflow anterior ainda publicava `net8.0-android` apesar do projeto usar `net10.0-android`.
-Esta revisão alinha ambos para .NET 10 e adiciona a referência explícita ao pacote `Microsoft.Maui.Controls`.
-Se o GitHub executar `-f net8.0-android`, confirme que o workflow atualizado substituiu o antigo na branch utilizada.
-
-## Android launcher fix
-
-This revision adds the Android entry points (`MainActivity` with `MainLauncher=true` and `MainApplication`), a manifest, and a MAUI app icon. Build through GitHub Actions, uninstall the previous app from the device, then install the new APK. This fixes missing launcher declarations in the project; it has not been verified by an Android device build.
+Enviar o conteúdo da pasta raiz ao GitHub e executar `.github/workflows/android-apk.yml`. SDK e workload .NET 10 Android são necessários. Não foi possível compilar neste ambiente.
