@@ -5,6 +5,13 @@ public sealed class MainPage : ContentPage
     readonly Label status = new() { Text = "Importe JSON, atlas e texturas para começar.", TextColor = Colors.LightGray };
     readonly Picker skins = new() { Title = "Selecionar skin", TextColor = Colors.White, TitleColor = Colors.LightGray };
     readonly Picker animations = new() { Title = "Selecionar animação", TextColor = Colors.White, TitleColor = Colors.LightGray };
+    readonly Entry skinSearch = new() { Placeholder = "Pesquisar skin...", TextColor = Colors.White, PlaceholderColor = Colors.Gray, ClearButtonVisibility = ClearButtonVisibility.WhileEditing };
+    readonly Entry animationSearch = new() { Placeholder = "Pesquisar animação...", TextColor = Colors.White, PlaceholderColor = Colors.Gray, ClearButtonVisibility = ClearButtonVisibility.WhileEditing };
+    readonly Label skinCount = new() { Text = "Nenhuma skin", TextColor = Colors.LightGray, FontSize = 12 };
+    readonly Label animationCount = new() { Text = "Nenhuma animação", TextColor = Colors.LightGray, FontSize = 12 };
+    IReadOnlyList<string> allSkins = Array.Empty<string>();
+    IReadOnlyList<string> allAnimations = Array.Empty<string>();
+    bool updatingSelection;
     readonly Label atlasInfo = new() { Text = "Nenhum atlas importado", TextColor = Colors.LightGray };
     readonly Button play = new() { Text = "▶ Reproduzir (aguardando runtime)", IsEnabled = false };
     readonly List<string> selectedTextures = new();
@@ -60,6 +67,16 @@ public sealed class MainPage : ContentPage
         texturedView.GetTriangles = () => use41 ? runtime41.TexturedTriangles() : Array.Empty<SpineTriangle>();
         var loadRuntime = new Button { Text = "Carregar runtime Spine 4.1 / 4.2" };
         loadRuntime.Clicked += LoadRuntime;
+        var previousSkin = new Button { Text = "◀ Skin" };
+        var nextSkin = new Button { Text = "Skin ▶" };
+        var previousAnimation = new Button { Text = "◀ Animação" };
+        var nextAnimation = new Button { Text = "Animação ▶" };
+        previousSkin.Clicked += (_, _) => MoveSelection(skins, -1);
+        nextSkin.Clicked += (_, _) => MoveSelection(skins, 1);
+        previousAnimation.Clicked += (_, _) => MoveSelection(animations, -1);
+        nextAnimation.Clicked += (_, _) => MoveSelection(animations, 1);
+        skinSearch.TextChanged += (_, _) => FilterPicker(skins, allSkins, skinSearch.Text, skinCount, "skins");
+        animationSearch.TextChanged += (_, _) => FilterPicker(animations, allAnimations, animationSearch.Text, animationCount, "animações");
         play.Text = "▶ Reproduzir";
         play.Clicked += (_, _) => { playing = !playing; play.Text = playing ? "⏸ Pausar" : "▶ Reproduzir"; };
         playbackTimer = Dispatcher.CreateTimer();
@@ -98,11 +115,50 @@ public sealed class MainPage : ContentPage
             Padding = new Thickness(18, 24), Spacing = 14,
             Children = { new Label { Text = "SpineViewer Android", FontSize = 25, FontAttributes = FontAttributes.Bold, TextColor = Colors.White },
                 folderButton, json, atlasButton, imageButton, binaryButton, loadRuntime, rendererChoice, checkVulkan, gpuInfo, fpsInfo, performanceInfo, texturedView, vulkanView,
-                atlasInfo, new Label { Text = "Skins", TextColor = Colors.White }, skins,
-                new Label { Text = "Animações", TextColor = Colors.White }, animations, play, status }
+                atlasInfo,
+                new Label { Text = "Skins", TextColor = Colors.White, FontAttributes = FontAttributes.Bold }, skinSearch, skinCount, skins,
+                new HorizontalStackLayout { Spacing = 8, Children = { previousSkin, nextSkin } },
+                new Label { Text = "Animações", TextColor = Colors.White, FontAttributes = FontAttributes.Bold }, animationSearch, animationCount, animations,
+                new HorizontalStackLayout { Spacing = 8, Children = { previousAnimation, nextAnimation } },
+                play, status }
         }};
-        skins.SelectedIndexChanged += (_, _) => { if (skins.SelectedItem is not string s) return; Active.SetSkin(s); InvalidateActiveRenderer(); status.Text = $"Skin: {s}"; };
-        animations.SelectedIndexChanged += (_, _) => { if (animations.SelectedItem is not string a) return; Active.SetAnimation(a); InvalidateActiveRenderer(); status.Text = $"Animação: {a}"; };
+        skins.SelectedIndexChanged += (_, _) => { if (updatingSelection || skins.SelectedItem is not string s) return; Active.SetSkin(s); InvalidateActiveRenderer(); status.Text = $"Skin: {s}"; };
+        animations.SelectedIndexChanged += (_, _) => { if (updatingSelection || animations.SelectedItem is not string a) return; Active.SetAnimation(a); InvalidateActiveRenderer(); status.Text = $"Animação: {a}"; };
+    }
+    static void MoveSelection(Picker picker, int direction)
+    {
+        if (picker.Items.Count == 0) return;
+        int current = picker.SelectedIndex;
+        picker.SelectedIndex = current < 0 ? 0 : (current + direction + picker.Items.Count) % picker.Items.Count;
+    }
+    void FilterPicker(Picker picker, IReadOnlyList<string> source, string? query, Label count, string noun)
+    {
+        string? selected = picker.SelectedItem as string;
+        var matches = string.IsNullOrWhiteSpace(query)
+            ? source.ToList()
+            : source.Where(s => s.Contains(query.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
+        updatingSelection = true;
+        try
+        {
+            picker.ItemsSource = matches;
+            picker.SelectedIndex = selected == null ? -1 : matches.IndexOf(selected);
+        }
+        finally { updatingSelection = false; }
+        count.Text = $"{matches.Count} de {source.Count} {noun}";
+    }
+    void UpdateCatalogs(IReadOnlyList<string> availableSkins, IReadOnlyList<string> availableAnimations, bool selectFirst)
+    {
+        allSkins = availableSkins.ToArray();
+        allAnimations = availableAnimations.ToArray();
+        skinSearch.Text = string.Empty;
+        animationSearch.Text = string.Empty;
+        FilterPicker(skins, allSkins, null, skinCount, "skins");
+        FilterPicker(animations, allAnimations, null, animationCount, "animações");
+        if (selectFirst)
+        {
+            if (skins.Items.Count > 0) skins.SelectedIndex = 0;
+            if (animations.Items.Count > 0) animations.SelectedIndex = 0;
+        }
     }
     void SelectRenderer()
     {
@@ -155,8 +211,7 @@ public sealed class MainPage : ContentPage
             if (!binary)
             {
                 var data = SpineJsonCatalog.Read(System.Text.Encoding.UTF8.GetString(skeleton.Content), skeleton.Name);
-                skins.ItemsSource = data.Skins.ToList();
-                animations.ItemsSource = data.Animations.ToList();
+                UpdateCatalogs(data.Skins.ToList(), data.Animations.ToList(), false);
             }
             await LoadRuntimeCoreAsync();
             status.Text = $"Pasta importada: {skeleton.Name}, {atlases[0].Name}, {pngs.Count} PNG(s). Spine {(use41 ? "4.1" : "4.2")} carregado.";
@@ -175,7 +230,7 @@ public sealed class MainPage : ContentPage
             var jsonText = await reader.ReadToEndAsync();
             skeletonContent = System.Text.Encoding.UTF8.GetBytes(jsonText); skeletonBinary = false;
             var catalog = SpineJsonCatalog.Read(jsonText, file.FileName);
-            skins.ItemsSource = catalog.Skins.ToList(); animations.ItemsSource = catalog.Animations.ToList();
+            UpdateCatalogs(catalog.Skins.ToList(), catalog.Animations.ToList(), false);
             status.Text = $"{catalog.Name}: {catalog.Skins.Count} skins e {catalog.Animations.Count} animações.";
         }
         catch (Exception ex) { await DisplayAlertAsync("Importação JSON", ex.Message, "OK"); }
@@ -227,10 +282,7 @@ public sealed class MainPage : ContentPage
         use41 = skeletonBinary && SpineBinaryInspector.Inspect(skeletonContent).Version?.StartsWith("4.1") == true;
         if (use41) runtime41.Load(atlasText, skeletonContent, skeletonBinary);
         else runtime.Load(atlasText, skeletonContent, skeletonBinary);
-        skins.ItemsSource = Active.Skins.ToList();
-        animations.ItemsSource = Active.Animations.ToList();
-        if (Active.Skins.Count > 0) skins.SelectedIndex = 0;
-        if (Active.Animations.Count > 0) animations.SelectedIndex = 0;
+        UpdateCatalogs(Active.Skins, Active.Animations, true);
         playing = false;
         play.Text = "▶ Reproduzir";
         play.IsEnabled = use41 && Active.Animations.Count > 0;
