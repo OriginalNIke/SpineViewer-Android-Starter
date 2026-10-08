@@ -124,11 +124,57 @@ public sealed class MainPage : ContentPage
             }
         };
         playbackTimer.Start();
+        // Fundo salvo independentemente do renderizador selecionado.
+        var backgroundPresets = new (string Name, int Rgb)[]
+        {
+            ("Azul escuro (padrão)", 0x111827), ("Preto", 0x000000),
+            ("Cinza escuro", 0x303030), ("Cinza claro", 0xD0D0D0),
+            ("Branco", 0xFFFFFF), ("Verde", 0x00FF00), ("Azul", 0x0000FF),
+            ("Personalizado", -1)
+        };
+        int savedBackground = Preferences.Default.Get("background_rgb", 0x111827);
+        SpineBackground.Set(savedBackground);
+        var backgroundPicker = new Picker { Title = "Cor do fundo", TextColor = Colors.White, TitleColor = Colors.LightGray };
+        foreach (var preset in backgroundPresets) backgroundPicker.Items.Add(preset.Name);
+        var customBackground = new Entry { Placeholder = "Hexadecimal: #RRGGBB", TextColor = Colors.White,
+            Keyboard = Keyboard.Text, IsVisible = false, MaxLength = 7 };
+        var applyBackground = new Button { Text = "Aplicar cor", IsVisible = false };
+        void SetBackground(int rgb)
+        {
+            SpineBackground.Set(rgb);
+            Preferences.Default.Set("background_rgb", rgb);
+            InvalidateActiveRenderer();
+        }
+        applyBackground.Clicked += async (_, _) =>
+        {
+            string hex = (customBackground.Text ?? "").Trim().TrimStart('#');
+            if (hex.Length != 6 || !int.TryParse(hex, System.Globalization.NumberStyles.HexNumber,
+                System.Globalization.CultureInfo.InvariantCulture, out int rgb))
+            {
+                await DisplayAlertAsync("Cor inválida", "Digite uma cor no formato #RRGGBB.", "OK");
+                return;
+            }
+            SetBackground(rgb);
+        };
+        backgroundPicker.SelectedIndexChanged += (_, _) =>
+        {
+            int index = backgroundPicker.SelectedIndex;
+            if (index < 0) return;
+            bool custom = backgroundPresets[index].Rgb < 0;
+            customBackground.IsVisible = applyBackground.IsVisible = custom;
+            if (custom)
+                customBackground.Text = $"#{SpineBackground.Current:X6}";
+            else
+                SetBackground(backgroundPresets[index].Rgb);
+        };
+        int selectedPreset = Array.FindIndex(backgroundPresets, p => p.Rgb == savedBackground);
+        backgroundPicker.SelectedIndex = selectedPreset >= 0 ? selectedPreset : backgroundPresets.Length - 1;
         // Menu recolhível: controles de importação e diagnóstico não ocupam a área do personagem.
         var menuButton = new Button { Text = "☰  Opções  ▾", HorizontalOptions = LayoutOptions.Fill };
         var optionsPanel = new VerticalStackLayout { Spacing = 12, IsVisible = false,
             Children = { folderButton, json, atlasButton, imageButton, binaryButton,
-                rendererChoice, checkVulkan, gpuInfo, atlasInfo } };
+                rendererChoice, new Label { Text = "Fundo da animação", TextColor = Colors.White },
+                backgroundPicker, customBackground, applyBackground, checkVulkan, gpuInfo, atlasInfo } };
         menuButton.Clicked += (_, _) =>
         {
             optionsPanel.IsVisible = !optionsPanel.IsVisible;

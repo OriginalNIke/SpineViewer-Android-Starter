@@ -12,6 +12,8 @@ namespace SpineViewer.Android;
 internal static class VulkanNative {
     [DllImport("spine_vulkan", EntryPoint="spine_vk_create_surface")]
     internal static extern IntPtr Create(IntPtr env, IntPtr surface);
+    [DllImport("spine_vulkan", EntryPoint="spine_vk_set_background")]
+    internal static extern void SetBackground(IntPtr renderer, float red, float green, float blue);
     [DllImport("spine_vulkan", EntryPoint="spine_vk_draw_clear")]
     internal static extern int Draw(IntPtr renderer);
     [DllImport("spine_vulkan", EntryPoint="spine_vk_destroy")]
@@ -96,6 +98,7 @@ internal sealed class VulkanPreviewCallback : Java.Lang.Object, ISurfaceHolderCa
     public void Render() {
         if(renderer==IntPtr.Zero)return;
         try {
+            VulkanNative.SetBackground(renderer, SpineBackground.R, SpineBackground.G, SpineBackground.B);
             foreach(var kv in pngs()) {
                 if(uploaded.Contains(kv.Key))continue;
                 byte[] rgba = SpineAtlasPixels.Decode(kv.Value, out int textureWidth, out int textureHeight);

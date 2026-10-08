@@ -151,7 +151,7 @@ internal sealed class SpineGLRenderer : Java.Lang.Object, GLSurfaceView.IRendere
     }
     public void OnDrawFrame(Javax.Microedition.Khronos.Opengles.IGL10? gl)
     {
-        GLES30.GlClearColor(17/255f,24/255f,39/255f,1); GLES30.GlClear(GLES30.GlColorBufferBit);
+        GLES30.GlClearColor(SpineBackground.R, SpineBackground.G, SpineBackground.B, 1); GLES30.GlClear(GLES30.GlColorBufferBit);
         GLES30.GlUseProgram(program);
         lock(sync) {
             var camera = SpineCamera.Snapshot();

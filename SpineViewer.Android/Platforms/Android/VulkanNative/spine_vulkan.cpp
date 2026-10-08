@@ -20,6 +20,7 @@
 // loop must be implemented before switching the MAUI view to this backend.
 namespace {
 struct Renderer {
+    float background[3] = {17.f/255.f, 24.f/255.f, 39.f/255.f};
     VkInstance instance = VK_NULL_HANDLE;
     VkPhysicalDevice physical = VK_NULL_HANDLE;
     VkDevice device = VK_NULL_HANDLE;
@@ -496,8 +497,8 @@ struct Renderer {
         VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
         if (vkBeginCommandBuffer(commandBuffer, &begin) != VK_SUCCESS) return false;
         VkClearValue clear{};
-        clear.color.float32[0] = 0.07f; clear.color.float32[1] = 0.11f;
-        clear.color.float32[2] = 0.17f; clear.color.float32[3] = 1.f;
+        clear.color.float32[0] = background[0]; clear.color.float32[1] = background[1];
+        clear.color.float32[2] = background[2]; clear.color.float32[3] = 1.f;
         VkRenderPassBeginInfo render{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
         render.renderPass = renderPass; render.framebuffer = framebuffers[index];
         render.renderArea.extent = extent; render.clearValueCount = 1; render.pClearValues = &clear;
@@ -562,6 +563,11 @@ void* spine_vk_create_surface(void* jniEnv, void* javaSurface) {
     void* handle = spine_vk_create(window);
     ANativeWindow_release(window);
     return handle;
+}
+void spine_vk_set_background(void* handle, float red, float green, float blue) {
+    auto* r = static_cast<Renderer*>(handle);
+    if (!r) return;
+    r->background[0] = red; r->background[1] = green; r->background[2] = blue;
 }
 int spine_vk_draw_clear(void* handle) {
     auto* r = static_cast<Renderer*>(handle);
