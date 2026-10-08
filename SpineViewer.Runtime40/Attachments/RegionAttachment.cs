@@ -112,13 +112,12 @@ namespace SpineRuntime40 {
 			float localY2 = height / 2;
 			float localX = -localX2;
 			float localY = -localY2;
-			bool rotated = false;
+			int atlasRotation = region is AtlasRegion ? ((AtlasRegion)region).degrees : 0;
 			if (region is AtlasRegion) {
 				AtlasRegion region = (AtlasRegion)this.region;
 				localX += region.offsetX / region.originalWidth * width;
 				localY += region.offsetY / region.originalHeight * height;
-				if (region.degrees == 90) {
-					rotated = true;
+				if (region.degrees == 90 || region.degrees == 270) {
 					localX2 -= (region.originalWidth - region.offsetX - region.packedHeight) / region.originalWidth * width;
 					localY2 -= (region.originalHeight - region.offsetY - region.packedWidth) / region.originalHeight * height;
 				} else {
@@ -155,15 +154,21 @@ namespace SpineRuntime40 {
 			offset[BRX] = localX2Cos - localYSin;
 			offset[BRY] = localYCos + localX2Sin;
 
-			if (rotated) {
-				uvs[BLX] = region.u2;
-				uvs[BLY] = region.v;
-				uvs[ULX] = region.u2;
-				uvs[ULY] = region.v2;
-				uvs[URX] = region.u;
-				uvs[URY] = region.v2;
-				uvs[BRX] = region.u;
-				uvs[BRY] = region.v;
+			if (atlasRotation == 90) {
+				uvs[BLX] = region.u2; uvs[BLY] = region.v;
+				uvs[ULX] = region.u2; uvs[ULY] = region.v2;
+				uvs[URX] = region.u;  uvs[URY] = region.v2;
+				uvs[BRX] = region.u;  uvs[BRY] = region.v;
+			} else if (atlasRotation == 180) {
+				uvs[BLX] = region.u;  uvs[BLY] = region.v;
+				uvs[ULX] = region.u2; uvs[ULY] = region.v;
+				uvs[URX] = region.u2; uvs[URY] = region.v2;
+				uvs[BRX] = region.u;  uvs[BRY] = region.v2;
+			} else if (atlasRotation == 270) {
+				uvs[BLX] = region.u;  uvs[BLY] = region.v2;
+				uvs[ULX] = region.u;  uvs[ULY] = region.v;
+				uvs[URX] = region.u2; uvs[URY] = region.v;
+				uvs[BRX] = region.u2; uvs[BRY] = region.v2;
 			} else {
 				uvs[BLX] = region.u2;
 				uvs[BLY] = region.v2;

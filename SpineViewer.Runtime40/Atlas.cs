@@ -242,7 +242,7 @@ namespace SpineRuntime40 {
 					}
 					region.u = region.x / (float)page.width;
 					region.v = region.y / (float)page.height;
-					if (region.degrees == 90) {
+					if (region.degrees == 90 || region.degrees == 270) {
 						region.u2 = (region.x + region.height) / (float)page.width;
 						region.v2 = (region.y + region.width) / (float)page.height;
 
