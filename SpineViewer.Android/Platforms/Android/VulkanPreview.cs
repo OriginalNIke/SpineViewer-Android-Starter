@@ -47,7 +47,7 @@ internal sealed class VulkanPreviewCallback : Java.Lang.Object, ISurfaceHolderCa
             status("Vulkan: pipelines e shaders SPIR-V carregados");
         } catch(Exception ex) {status("Vulkan: "+ex.Message);}
     }
-    public void SurfaceChanged(ISurfaceHolder holder, Android.Graphics.Format format,int w,int h) {width=Math.Max(1,w);height=Math.Max(1,h);}
+    public void SurfaceChanged(ISurfaceHolder holder, global::Android.Graphics.Format format,int w,int h) {width=Math.Max(1,w);height=Math.Max(1,h);}
     public void SurfaceDestroyed(ISurfaceHolder holder) {
         if(renderer!=IntPtr.Zero) {VulkanNative.Destroy(renderer);renderer=IntPtr.Zero;}
         uploaded.Clear();
