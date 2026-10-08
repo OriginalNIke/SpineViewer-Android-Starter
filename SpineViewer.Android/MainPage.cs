@@ -31,8 +31,10 @@ public sealed class MainPage : ContentPage
     bool skeletonBinary;
     readonly Spine42Session runtime = new();
     readonly Spine41Session runtime41 = new();
+    readonly Spine40Session runtime40 = new();
+    bool use40;
     bool use41;
-    ISpinePlayback Active => use41 ? runtime41 : runtime;
+    ISpinePlayback Active => use40 ? runtime40 : (use41 ? runtime41 : runtime);
     bool playing;
     IDispatcherTimer? playbackTimer;
     public MainPage()
@@ -64,8 +66,8 @@ public sealed class MainPage : ContentPage
         imageButton.Clicked += ImportTexture;
         var binaryButton = new Button { Text = "Inspecionar .skel" };
         binaryButton.Clicked += ImportSkel;
-        texturedView.GetTriangles = () => use41 ? runtime41.TexturedTriangles() : runtime.TexturedTriangles();
-        var loadRuntime = new Button { Text = "Carregar runtime Spine 4.1 / 4.2" };
+        texturedView.GetTriangles = () => use40 ? runtime40.TexturedTriangles() : (use41 ? runtime41.TexturedTriangles() : runtime.TexturedTriangles());
+        var loadRuntime = new Button { Text = "Carregar runtime Spine 4.0 / 4.1 / 4.2" };
         loadRuntime.Clicked += LoadRuntime;
         var previousSkin = new Button { Text = "◀ Skin" };
         var nextSkin = new Button { Text = "Skin ▶" };
@@ -214,7 +216,7 @@ public sealed class MainPage : ContentPage
                 UpdateCatalogs(data.Skins.ToList(), data.Animations.ToList(), false);
             }
             await LoadRuntimeCoreAsync();
-            status.Text = $"Pasta importada: {skeleton.Name}, {atlases[0].Name}, {pngs.Count} PNG(s). Spine {(use41 ? "4.1" : "4.2")} carregado.";
+            status.Text = $"Pasta importada: {skeleton.Name}, {atlases[0].Name}, {pngs.Count} PNG(s). Spine {(use40 ? "4.0" : (use41 ? "4.1" : "4.2"))} carregado.";
         }
         catch (Exception ex) { await DisplayAlertAsync("Importar pasta", ex.Message, "OK"); }
     }
@@ -279,15 +281,20 @@ public sealed class MainPage : ContentPage
     {
         if (atlasText == null || skeletonContent == null)
             throw new InvalidOperationException("Importe primeiro um .atlas e um .json ou .skel.");
-        use41 = skeletonBinary && SpineBinaryInspector.Inspect(skeletonContent).Version?.StartsWith("4.1") == true;
-        if (use41) runtime41.Load(atlasText, skeletonContent, skeletonBinary);
+        string? version = SpineVersionDetector.Detect(skeletonContent, skeletonBinary);
+        use40 = version?.StartsWith("4.0", StringComparison.Ordinal) == true;
+        use41 = version?.StartsWith("4.1", StringComparison.Ordinal) == true;
+        if (!use40 && !use41 && version?.StartsWith("4.2", StringComparison.Ordinal) != true)
+            throw new NotSupportedException($"Versão Spine não identificada ou não suportada: {version ?? "desconhecida"}. Exporte em 4.0, 4.1 ou 4.2.");
+        if (use40) runtime40.Load(atlasText, skeletonContent, skeletonBinary);
+        else if (use41) runtime41.Load(atlasText, skeletonContent, skeletonBinary);
         else runtime.Load(atlasText, skeletonContent, skeletonBinary);
         UpdateCatalogs(Active.Skins, Active.Animations, true);
         playing = false;
         play.Text = "▶ Reproduzir";
         play.IsEnabled = Active.Animations.Count > 0;
         texturedView.InvalidateSurface();
-        status.Text = $"Spine {(use41 ? "4.1" : "4.2")} carregado: {Active.Skins.Count} skins, {Active.Animations.Count} animações.";
+        status.Text = $"Spine {(use40 ? "4.0" : (use41 ? "4.1" : "4.2"))} carregado: {Active.Skins.Count} skins, {Active.Animations.Count} animações.";
         return Task.CompletedTask;
     }
     async void ImportSkel(object? sender, EventArgs e)

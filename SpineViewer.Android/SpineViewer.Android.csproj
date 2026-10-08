@@ -23,7 +23,7 @@
   </ItemGroup>
   <ItemGroup><ProjectReference Include="../SpineViewer.Core/SpineViewer.Core.csproj" /></ItemGroup>
   <ItemGroup><ProjectReference Include="../SpineViewer.Runtime42/SpineViewer.Runtime42.csproj" /></ItemGroup>
-  <ItemGroup><ProjectReference Include="../SpineViewer.Runtime41/SpineViewer.Runtime41.csproj" /></ItemGroup>
+  <ItemGroup><ProjectReference Include="../SpineViewer.Runtime41/SpineViewer.Runtime41.csproj" /><ProjectReference Include="../SpineViewer.Runtime40/SpineViewer.Runtime40.csproj" /></ItemGroup>
   <ItemGroup>
     <AndroidAsset Include="Platforms/Android/Assets/vulkan/*.spv" Link="vulkan/%(Filename)%(Extension)" />
   </ItemGroup>
