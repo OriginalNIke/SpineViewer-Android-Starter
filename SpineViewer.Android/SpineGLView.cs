@@ -3,6 +3,7 @@ using Android.Opengl;
 using Android.Graphics;
 using Java.Nio;
 using GLES30 = Android.Opengl.GLES30;
+using SpineRuntime41;
 
 namespace SpineViewer.Android;
 
@@ -60,7 +61,7 @@ internal sealed class SpineGLRenderer : Java.Lang.Object, GLSurfaceView.IRendere
     readonly object sync = new();
     readonly Dictionary<string, byte[]> pngs = new(StringComparer.OrdinalIgnoreCase);
     readonly Dictionary<string, int> textureIds = new(StringComparer.OrdinalIgnoreCase);
-    readonly List<(string page, float[] vertices)> batches = new();
+    readonly List<(string page, BlendMode blend, float[] vertices)> batches = new();
     int program, posAttr, uvAttr, samplerUniform, sizeUniform, halfHeightUniform;
     int vertexBuffer;
     int width = 1, height = 1;
@@ -85,15 +86,16 @@ internal sealed class SpineGLRenderer : Java.Lang.Object, GLSurfaceView.IRendere
             int start=0;
             while(start<triangles.Count) {
                 string page=triangles[start].Page;
+                BlendMode blend=triangles[start].Blend;
                 int end=start+1;
-                while(end<triangles.Count && string.Equals(page,triangles[end].Page,StringComparison.OrdinalIgnoreCase)) end++;
+                while(end<triangles.Count && string.Equals(page,triangles[end].Page,StringComparison.OrdinalIgnoreCase) && blend == triangles[end].Blend) end++;
                 var data=new float[(end-start)*3*4];
                 int n=0;
                 for(int i=start;i<end;i++) for(int j=0;j<3;j++) {
                     data[n++]=triangles[i].XY[j*2]; data[n++]=triangles[i].XY[j*2+1];
                     data[n++]=triangles[i].UV[j*2]; data[n++]=triangles[i].UV[j*2+1];
                 }
-                batches.Add((page,data)); start=end;
+                batches.Add((page,blend,data)); start=end;
             }
         }
     }
@@ -146,7 +148,13 @@ internal sealed class SpineGLRenderer : Java.Lang.Object, GLSurfaceView.IRendere
             GLES30.GlUniform4f(sizeUniform,centerX,centerY,scale,Math.Max(1,width)*0.5f);
             GLES30.GlUniform1f(halfHeightUniform, Math.Max(1,height)*0.5f);
             // Vertex shader handles viewport aspect ratio.
-            foreach(var (page,source) in batches) {
+            foreach(var (page,blend,source) in batches) {
+                switch (blend) {
+                    case BlendMode.Additive: GLES30.GlBlendFunc(GLES30.GlSrcAlpha, GLES30.GlOne); break;
+                    case BlendMode.Multiply: GLES30.GlBlendFunc(GLES30.GlDstColor, GLES30.GlOneMinusSrcAlpha); break;
+                    case BlendMode.Screen: GLES30.GlBlendFunc(GLES30.GlOne, GLES30.GlOneMinusSrcColor); break;
+                    default: GLES30.GlBlendFunc(GLES30.GlSrcAlpha, GLES30.GlOneMinusSrcAlpha); break;
+                }
                 if(!pngs.TryGetValue(page,out var png)) continue;
                 int id=GetTexture(page,png); if(id==0) continue;
                 // Upload interleaved XYUV data to a GPU VBO. Attribute offsets are
