@@ -1,0 +1,159 @@
+using Microsoft.Maui.Handlers;
+using Android.Opengl;
+using Android.Graphics;
+using Java.Nio;
+using GLES30 = Android.Opengl.GLES30;
+
+namespace SpineViewer.Android;
+
+// Native OpenGL ES 3 surface. All GL calls run on the GL thread.
+public sealed class SpineGLView : Microsoft.Maui.Controls.View
+{
+    internal SpineGLSurface? Surface;
+    public Func<IReadOnlyList<SpineTriangle>> GetTriangles { get; set; } = () => Array.Empty<SpineTriangle>();
+    public SpineGLView() { HeightRequest = 520; }
+    public void SetTexture(string name, byte[] png) => Surface?.SetTexture(name, png);
+    public void InvalidateSurface() => Surface?.UpdateFrame(GetTriangles());
+}
+
+public sealed class SpineGLHandler : ViewHandler<SpineGLView, SpineGLSurface>
+{
+    public static readonly IPropertyMapper<SpineGLView, SpineGLHandler> Mapper = new PropertyMapper<SpineGLView, SpineGLHandler>(ViewMapper);
+    public SpineGLHandler() : base(Mapper) { }
+    protected override SpineGLSurface CreatePlatformView() => new(Context);
+    protected override void ConnectHandler(SpineGLSurface platformView)
+    {
+        base.ConnectHandler(platformView);
+        VirtualView.Surface = platformView;
+    }
+    protected override void DisconnectHandler(SpineGLSurface platformView)
+    {
+        VirtualView.Surface = null;
+        platformView.OnPause();
+        base.DisconnectHandler(platformView);
+    }
+}
+
+public sealed class SpineGLSurface : GLSurfaceView
+{
+    readonly SpineGLRenderer renderer = new();
+    public SpineGLSurface(global::Android.Content.Context context) : base(context)
+    {
+        SetEGLContextClientVersion(3);
+        SetRenderer(renderer);
+        RenderMode = Rendermode.WhenDirty;
+    }
+    public void SetTexture(string name, byte[] png)
+    {
+        renderer.SetTexture(name, png);
+        RequestRender();
+    }
+    public void UpdateFrame(IReadOnlyList<SpineTriangle> triangles)
+    {
+        renderer.UpdateFrame(triangles);
+        RequestRender();
+    }
+}
+
+internal sealed class SpineGLRenderer : Java.Lang.Object, GLSurfaceView.IRenderer
+{
+    readonly object sync = new();
+    readonly Dictionary<string, byte[]> pngs = new(StringComparer.OrdinalIgnoreCase);
+    readonly Dictionary<string, int> textureIds = new(StringComparer.OrdinalIgnoreCase);
+    readonly List<(string page, float[] vertices)> batches = new();
+    int program, posAttr, uvAttr, samplerUniform, sizeUniform;
+    int width = 1, height = 1;
+    float centerX, centerY, scale = 1;
+    public void SetTexture(string name, byte[] bytes)
+    {
+        lock (sync) pngs[name] = (byte[])bytes.Clone();
+    }
+    public void UpdateFrame(IReadOnlyList<SpineTriangle> triangles)
+    {
+        lock (sync)
+        {
+            batches.Clear();
+            if (triangles.Count == 0) return;
+            float minX=float.MaxValue,minY=float.MaxValue,maxX=float.MinValue,maxY=float.MinValue;
+            foreach(var t in triangles) for(int j=0;j<6;j+=2) {
+                minX=Math.Min(minX,t.XY[j]); maxX=Math.Max(maxX,t.XY[j]);
+                minY=Math.Min(minY,t.XY[j+1]); maxY=Math.Max(maxY,t.XY[j+1]);
+            }
+            centerX=(minX+maxX)*0.5f; centerY=(minY+maxY)*0.5f;
+            scale=Math.Clamp(Math.Min((width-32f)/Math.Max(1,maxX-minX),(height-32f)/Math.Max(1,maxY-minY)),0.01f,8f);
+            int start=0;
+            while(start<triangles.Count) {
+                string page=triangles[start].Page;
+                int end=start+1;
+                while(end<triangles.Count && string.Equals(page,triangles[end].Page,StringComparison.OrdinalIgnoreCase)) end++;
+                var data=new float[(end-start)*3*4];
+                int n=0;
+                for(int i=start;i<end;i++) for(int j=0;j<3;j++) {
+                    data[n++]=triangles[i].XY[j*2]; data[n++]=triangles[i].XY[j*2+1];
+                    data[n++]=triangles[i].UV[j*2]; data[n++]=triangles[i].UV[j*2+1];
+                }
+                batches.Add((page,data)); start=end;
+            }
+        }
+    }
+    const string VertexShader = "#version 300 es\nprecision highp float;\nin vec2 aPos; in vec2 aUV; uniform vec4 uView; out vec2 vUV; void main(){ vec2 p=(aPos-uView.xy)*uView.z; gl_Position=vec4(p.x/uView.w, -p.y, 0.0,1.0); vUV=aUV; }";
+    const string FragmentShader = "#version 300 es\nprecision mediump float; in vec2 vUV; uniform sampler2D uTexture; out vec4 frag; void main(){ frag=texture(uTexture,vUV); }";
+    static int Compile(int type,string source) {
+        int shader=GLES30.GlCreateShader(type); GLES30.GlShaderSource(shader,source); GLES30.GlCompileShader(shader);
+        int[] ok=new int[1]; GLES30.GlGetShaderiv(shader,GLES30.GlCompileStatus,ok,0);
+        if(ok[0]==0) throw new InvalidOperationException(GLES30.GlGetShaderInfoLog(shader));
+        return shader;
+    }
+    public void OnSurfaceCreated(Javax.Microedition.Khronos.Opengles.IGL10? gl, Javax.Microedition.Khronos.Egl.EGLConfig? config)
+    {
+        textureIds.Clear();
+        int vs=Compile(GLES30.GlVertexShader,VertexShader), fs=Compile(GLES30.GlFragmentShader,FragmentShader);
+        program=GLES30.GlCreateProgram(); GLES30.GlAttachShader(program,vs); GLES30.GlAttachShader(program,fs); GLES30.GlLinkProgram(program);
+        GLES30.GlDeleteShader(vs); GLES30.GlDeleteShader(fs);
+        posAttr=GLES30.GlGetAttribLocation(program,"aPos"); uvAttr=GLES30.GlGetAttribLocation(program,"aUV");
+        sizeUniform=GLES30.GlGetUniformLocation(program,"uView"); samplerUniform=GLES30.GlGetUniformLocation(program,"uTexture");
+        GLES30.GlEnable(GLES30.GlBlend); GLES30.GlBlendFunc(GLES30.GlSrcAlpha,GLES30.GlOneMinusSrcAlpha);
+        GLES30.GlDisable(GLES30.GlDepthTest);
+    }
+    public void OnSurfaceChanged(Javax.Microedition.Khronos.Opengles.IGL10? gl,int w,int h)
+    {
+        width=Math.Max(1,w);height=Math.Max(1,h); GLES30.GlViewport(0,0,width,height);
+    }
+    int GetTexture(string name,byte[] png)
+    {
+        if(textureIds.TryGetValue(name,out int id)) return id;
+        using var bitmap=BitmapFactory.DecodeByteArray(png,0,png.Length);
+        if(bitmap==null) return 0;
+        int[] ids=new int[1]; GLES30.GlGenTextures(1,ids,0); id=ids[0];
+        GLES30.GlBindTexture(GLES30.GlTexture2d,id);
+        GLES30.GlTexParameteri(GLES30.GlTexture2d,GLES30.GlTextureMinFilter,GLES30.GlLinear);
+        GLES30.GlTexParameteri(GLES30.GlTexture2d,GLES30.GlTextureMagFilter,GLES30.GlLinear);
+        GLES30.GlTexParameteri(GLES30.GlTexture2d,GLES30.GlTextureWrapS,GLES30.GlClampToEdge);
+        GLES30.GlTexParameteri(GLES30.GlTexture2d,GLES30.GlTextureWrapT,GLES30.GlClampToEdge);
+        GLUtils.TexImage2D(GLES30.GlTexture2d,0,bitmap,0);
+        textureIds[name]=id; return id;
+    }
+    public void OnDrawFrame(Javax.Microedition.Khronos.Opengles.IGL10? gl)
+    {
+        GLES30.GlClearColor(17/255f,24/255f,39/255f,1); GLES30.GlClear(GLES30.GlColorBufferBit);
+        GLES30.GlUseProgram(program);
+        lock(sync) {
+            GLES30.GlUniform4f(sizeUniform,centerX,centerY,scale,Math.Max(1,width)*0.5f);
+            // Correct aspect ratio by transforming Y on CPU below.
+            foreach(var (page,source) in batches) {
+                if(!pngs.TryGetValue(page,out var png)) continue;
+                int id=GetTexture(page,png); if(id==0) continue;
+                float[] data=(float[])source.Clone();
+                for(int i=0;i<data.Length;i+=4) data[i+1]=centerY+(data[i+1]-centerY)*width/(float)height;
+                var buffer=ByteBuffer.AllocateDirect(data.Length*4).Order(ByteOrder.NativeOrder()).AsFloatBuffer();
+                buffer.Put(data); buffer.Position(0);
+                GLES30.GlActiveTexture(GLES30.GlTexture0); GLES30.GlBindTexture(GLES30.GlTexture2d,id);
+                GLES30.GlUniform1i(samplerUniform,0);
+                GLES30.GlEnableVertexAttribArray(posAttr); GLES30.GlEnableVertexAttribArray(uvAttr);
+                buffer.Position(0); GLES30.GlVertexAttribPointer(posAttr,2,GLES30.GlFloat,false,16,buffer);
+                buffer.Position(2); GLES30.GlVertexAttribPointer(uvAttr,2,GLES30.GlFloat,false,16,buffer);
+                GLES30.GlDrawArrays(GLES30.GlTriangles,0,data.Length/4);
+            }
+        }
+    }
+}

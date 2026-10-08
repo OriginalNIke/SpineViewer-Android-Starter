@@ -8,7 +8,7 @@ public sealed class MainPage : ContentPage
     readonly Label atlasInfo = new() { Text = "Nenhum atlas importado", TextColor = Colors.LightGray };
     readonly Button play = new() { Text = "▶ Reproduzir (aguardando runtime)", IsEnabled = false };
     readonly List<string> selectedTextures = new();
-    readonly SpineTexturedRenderer texturedView = new();
+    readonly SpineGLView texturedView = new();
     AtlasCatalog? atlas;
     string? atlasText;
     byte[]? skeletonContent;

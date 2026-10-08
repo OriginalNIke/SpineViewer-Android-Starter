@@ -5,7 +5,8 @@ public static class MauiProgram
     public static MauiApp CreateMauiApp()
     {
         var builder = MauiApp.CreateBuilder();
-        builder.UseMauiApp<App>().UseSkiaSharp();
+        builder.UseMauiApp<App>();
+        builder.ConfigureMauiHandlers(h => h.AddHandler<SpineGLView, SpineGLHandler>());
         return builder.Build();
     }
 }
