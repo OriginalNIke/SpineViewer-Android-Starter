@@ -5,7 +5,6 @@ public sealed class MainPage : ContentPage
     readonly Label status = new() { Text = "Importe JSON, atlas e texturas para começar.", TextColor = Colors.LightGray };
     readonly Picker skins = new() { Title = "Selecionar skin", TextColor = Colors.White, TitleColor = Colors.LightGray };
     readonly Picker animations = new() { Title = "Selecionar animação", TextColor = Colors.White, TitleColor = Colors.LightGray };
-    readonly Entry animationSearch = new() { Placeholder = "Pesquisar animação...", TextColor = Colors.White, PlaceholderColor = Colors.Gray, ClearButtonVisibility = ClearButtonVisibility.WhileEditing };
     readonly Label skinCount = new() { Text = "Nenhuma skin", TextColor = Colors.LightGray, FontSize = 12 };
     readonly Label animationCount = new() { Text = "Nenhuma animação", TextColor = Colors.LightGray, FontSize = 12 };
     readonly Picker characters = new() { Title = "Selecionar personagem", TextColor = Colors.White, TitleColor = Colors.LightGray };
@@ -77,7 +76,6 @@ public sealed class MainPage : ContentPage
         nextSkin.Clicked += (_, _) => MoveSelection(skins, 1);
         previousAnimation.Clicked += (_, _) => MoveSelection(animations, -1);
         nextAnimation.Clicked += (_, _) => MoveSelection(animations, 1);
-        animationSearch.TextChanged += (_, _) => FilterPicker(animations, allAnimations, animationSearch.Text, animationCount, "animações");
         var previousCharacter = new Button { Text = "◀ Personagem" };
         var nextCharacter = new Button { Text = "Personagem ▶" };
         previousCharacter.Clicked += (_, _) => MoveSelection(characters, -1);
@@ -136,14 +134,13 @@ public sealed class MainPage : ContentPage
         Content = new ScrollView { Content = new VerticalStackLayout
         {
             Padding = new Thickness(18, 24), Spacing = 14,
-            Children = { new Label { Text = "SpineViewer Android", FontSize = 25, FontAttributes = FontAttributes.Bold, TextColor = Colors.White },
-                menuButton, optionsPanel, texturedView, vulkanView,
+            Children = { menuButton, optionsPanel, texturedView, vulkanView,
                 fpsInfo, performanceInfo,
                 new Label { Text = "Personagens", TextColor = Colors.White, FontAttributes = FontAttributes.Bold }, characterCount, characters,
                 new HorizontalStackLayout { Spacing = 8, Children = { previousCharacter, nextCharacter } },
                 new Label { Text = "Skins", TextColor = Colors.White, FontAttributes = FontAttributes.Bold }, skinCount, skins,
                 new HorizontalStackLayout { Spacing = 8, Children = { previousSkin, nextSkin } },
-                new Label { Text = "Animações", TextColor = Colors.White, FontAttributes = FontAttributes.Bold }, animationSearch, animationCount, animations,
+                new Label { Text = "Animações", TextColor = Colors.White, FontAttributes = FontAttributes.Bold }, animationCount, animations,
                 new HorizontalStackLayout { Spacing = 8, Children = { previousAnimation, nextAnimation } },
                 play, status }
         }};
@@ -175,7 +172,6 @@ public sealed class MainPage : ContentPage
     {
         allSkins = availableSkins.ToArray();
         allAnimations = availableAnimations.ToArray();
-        animationSearch.Text = string.Empty;
         FilterPicker(skins, allSkins, null, skinCount, "skins");
         FilterPicker(animations, allAnimations, null, animationCount, "animações");
         if (selectFirst)
