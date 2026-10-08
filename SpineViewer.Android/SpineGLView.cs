@@ -39,12 +39,15 @@ public sealed class SpineGLHandler : ViewHandler<SpineGLView, SpineGLSurface>
 public sealed class SpineGLSurface : GLSurfaceView
 {
     readonly SpineGLRenderer renderer = new();
+    readonly SpineTouch touch;
     public SpineGLSurface(global::Android.Content.Context context) : base(context)
     {
+        touch = new SpineTouch(RequestRender);
         SetEGLContextClientVersion(3);
         SetRenderer(renderer);
         RenderMode = Rendermode.WhenDirty;
     }
+    public override bool OnTouchEvent(Android.Views.MotionEvent? e) => touch.Handle(this, e);
     public void SetTexture(string name, byte[] png)
     {
         renderer.SetTexture(name, png);
@@ -146,7 +149,9 @@ internal sealed class SpineGLRenderer : Java.Lang.Object, GLSurfaceView.IRendere
         GLES30.GlClearColor(17/255f,24/255f,39/255f,1); GLES30.GlClear(GLES30.GlColorBufferBit);
         GLES30.GlUseProgram(program);
         lock(sync) {
-            GLES30.GlUniform4f(sizeUniform,centerX,centerY,scale,Math.Max(1,width)*0.5f);
+            var camera = SpineCamera.Snapshot();
+            float effectiveScale = scale * camera.Zoom;
+            GLES30.GlUniform4f(sizeUniform,centerX-camera.PanX/effectiveScale,centerY+camera.PanY/effectiveScale,effectiveScale,Math.Max(1,width)*0.5f);
             GLES30.GlUniform1f(halfHeightUniform, Math.Max(1,height)*0.5f);
             // Vertex shader handles viewport aspect ratio.
             foreach(var (page,blend,source) in batches) {

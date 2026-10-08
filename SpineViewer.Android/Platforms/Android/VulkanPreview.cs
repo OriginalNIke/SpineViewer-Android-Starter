@@ -122,7 +122,10 @@ internal sealed class VulkanPreviewCallback : Java.Lang.Object, ISurfaceHolderCa
                     modeScratch[batchCount] = t.Blend switch {BlendMode.Additive=>1,BlendMode.Multiply=>2,BlendMode.Screen=>3,_=>0};
                     batchCount++;
                 }
-                VulkanNative.SetFrame(renderer,vertexScratch,n,countScratch,modeScratch,pageScratch,batchCount,cx,cy,scale);
+                var camera = SpineCamera.Snapshot();
+                float effectiveScale = scale * camera.Zoom;
+                VulkanNative.SetFrame(renderer,vertexScratch,n,countScratch,modeScratch,pageScratch,batchCount,
+                    cx-camera.PanX/effectiveScale,cy-camera.PanY/effectiveScale,effectiveScale);
             }
             if(VulkanNative.Draw(renderer)!=1)status("Vulkan: erro ao apresentar quadro");
             else presented();
@@ -165,7 +168,12 @@ public sealed class SpineVulkanHandler : ViewHandler<SpineVulkanView, SpineVulka
 public sealed class SpineVulkanSurface : SurfaceView
 {
     VulkanPreviewCallback? callback;
-    public SpineVulkanSurface(global::Android.Content.Context context) : base(context) { }
+    readonly SpineTouch touch;
+    public SpineVulkanSurface(global::Android.Content.Context context) : base(context)
+    {
+        touch = new SpineTouch(Render);
+    }
+    public override bool OnTouchEvent(MotionEvent? e) => touch.Handle(this, e);
     public void Attach(SpineVulkanView view)
     {
         Detach();
