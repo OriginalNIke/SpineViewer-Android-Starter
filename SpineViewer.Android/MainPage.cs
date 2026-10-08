@@ -51,8 +51,8 @@ public sealed class MainPage : ContentPage
                 atlasInfo, new Label { Text = "Skins", TextColor = Colors.White }, skins,
                 new Label { Text = "Animações", TextColor = Colors.White }, animations, play, status }
         }};
-        skins.SelectedIndexChanged += (_, _) => { if (skins.SelectedItem is string s) runtime.SetSkin(s); skeletonView.Invalidate(); status.Text = $"Skin: {s}"; };
-        animations.SelectedIndexChanged += (_, _) => { if (animations.SelectedItem is string a) runtime.SetAnimation(a); skeletonView.Invalidate(); status.Text = $"Animação: {a}"; };
+        skins.SelectedIndexChanged += (_, _) => { if (skins.SelectedItem is not string s) return; runtime.SetSkin(s); skeletonView.Invalidate(); status.Text = $"Skin: {s}"; };
+        animations.SelectedIndexChanged += (_, _) => { if (animations.SelectedItem is not string a) return; runtime.SetAnimation(a); skeletonView.Invalidate(); status.Text = $"Animação: {a}"; };
     }
     async void ImportJson(object? sender, EventArgs e)
     {
@@ -68,7 +68,7 @@ public sealed class MainPage : ContentPage
             skins.ItemsSource = catalog.Skins.ToList(); animations.ItemsSource = catalog.Animations.ToList();
             status.Text = $"{catalog.Name}: {catalog.Skins.Count} skins e {catalog.Animations.Count} animações.";
         }
-        catch (Exception ex) { await DisplayAlert("Importação JSON", ex.Message, "OK"); }
+        catch (Exception ex) { await DisplayAlertAsync("Importação JSON", ex.Message, "OK"); }
     }
     async void ImportAtlas(object? sender, EventArgs e)
     {
@@ -82,7 +82,7 @@ public sealed class MainPage : ContentPage
             atlasInfo.Text = $"Atlas: {atlas.Pages.Count} página(s), {atlas.Pages.Sum(p => p.Regions.Count)} região(ões). Páginas: {string.Join(", ", atlas.Pages.Select(p => p.Name))}";
             UpdateTextureStatus();
         }
-        catch (Exception ex) { await DisplayAlert("Importação atlas", ex.Message, "OK"); }
+        catch (Exception ex) { await DisplayAlertAsync("Importação atlas", ex.Message, "OK"); }
     }
     async void ImportTexture(object? sender, EventArgs e)
     {
@@ -97,7 +97,7 @@ public sealed class MainPage : ContentPage
             selectedTextures.Add(file.FileName);
             UpdateTextureStatus();
         }
-        catch (Exception ex) { await DisplayAlert("Importação PNG", ex.Message, "OK"); }
+        catch (Exception ex) { await DisplayAlertAsync("Importação PNG", ex.Message, "OK"); }
     }
     void UpdateTextureStatus()
     {
@@ -114,7 +114,7 @@ public sealed class MainPage : ContentPage
             play.IsEnabled = runtime.Animations.Count>0;
             skeletonView.Invalidate();
             status.Text = $"Spine 4.2 carregado: {runtime.Skins.Count} skins, {runtime.Animations.Count} animações. Prévia de ossos (sem texturas).";
-        } catch(Exception ex) { await DisplayAlert("Runtime Spine 4.2",ex.Message,"OK"); }
+        } catch(Exception ex) { await DisplayAlertAsync("Runtime Spine 4.2",ex.Message,"OK"); }
     }
     async void ImportSkel(object? sender, EventArgs e)
     {
@@ -128,6 +128,6 @@ public sealed class MainPage : ContentPage
             var result = SpineBinaryInspector.Inspect(skeletonContent);
             status.Text = $"{file.FileName}: {result.ByteCount} bytes; versão provável: {result.Version ?? "não identificada"}. Decodificação .skel ainda pendente.";
         }
-        catch (Exception ex) { await DisplayAlert("Inspeção .skel", ex.Message, "OK"); }
+        catch (Exception ex) { await DisplayAlertAsync("Inspeção .skel", ex.Message, "OK"); }
     }
 }
