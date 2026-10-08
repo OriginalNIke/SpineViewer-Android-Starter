@@ -46,8 +46,11 @@ public sealed class MainPage : ContentPage
         var checkVulkan = new Button { Text = "Verificar suporte Vulkan" };
         checkVulkan.Clicked += (_, _) => gpuInfo.Text = VulkanSupport.GetStatus();
         rendererChoice.ItemsSource = new List<string> { "OpenGL ES 3.0", "Vulkan (integrado)" };
-        rendererChoice.SelectedIndex = 0;
+        // Restaurar o renderizador escolhido na última execução.
+        rendererChoice.SelectedIndex = Preferences.Default.Get("preferred_renderer", 0) == 1 ? 1 : 0;
         rendererChoice.SelectedIndexChanged += (_, _) => SelectRenderer();
+        texturedView.IsVisible = rendererChoice.SelectedIndex != 1;
+        vulkanView.IsVisible = rendererChoice.SelectedIndex == 1;
         vulkanView.GetTriangles = () => texturedView.GetTriangles();
         vulkanView.GetTextures = () => vulkanTextures;
         vulkanView.OnFramePresented = () => System.Threading.Interlocked.Increment(ref vulkanPresented);
@@ -251,6 +254,7 @@ public sealed class MainPage : ContentPage
     void SelectRenderer()
     {
         bool vulkan = rendererChoice.SelectedIndex == 1;
+        Preferences.Default.Set("preferred_renderer", vulkan ? 1 : 0);
         texturedView.IsVisible = !vulkan;
         vulkanView.IsVisible = vulkan;
         gpuInfo.Text = vulkan ? "GPU: Vulkan (integrado, inicializando...)" : "GPU: OpenGL ES 3.0";

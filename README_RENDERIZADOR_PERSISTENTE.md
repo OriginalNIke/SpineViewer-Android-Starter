@@ -1,0 +1,1 @@
+A seleção OpenGL/Vulkan agora é salva com Microsoft.Maui.Storage.Preferences e restaurada na próxima inicialização. Em caso de erro do Vulkan, o fallback para OpenGL permanece ativo e passa a ser salvo.
