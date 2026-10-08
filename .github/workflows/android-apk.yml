@@ -13,6 +13,13 @@ jobs:
           dotnet-version: '10.0.x'
       - name: Install Android workload
         run: dotnet workload install maui-android
+      - name: Compile Vulkan shaders (SPIR-V)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y glslang-tools
+          mkdir -p SpineViewer.Android/Platforms/Android/Assets/vulkan
+          glslangValidator -V -S vert SpineViewer.Android/Platforms/Android/VulkanNative/shaders/spine.vert -o SpineViewer.Android/Platforms/Android/Assets/vulkan/spine.vert.spv
+          glslangValidator -V -S frag SpineViewer.Android/Platforms/Android/VulkanNative/shaders/spine.frag -o SpineViewer.Android/Platforms/Android/Assets/vulkan/spine.frag.spv
       - name: Build Vulkan native library (arm64-v8a)
         run: |
           cmake -S SpineViewer.Android/Platforms/Android/VulkanNative -B build-vulkan \

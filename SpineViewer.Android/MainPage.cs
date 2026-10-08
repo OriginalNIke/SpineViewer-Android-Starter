@@ -8,6 +8,7 @@ public sealed class MainPage : ContentPage
     readonly Label atlasInfo = new() { Text = "Nenhum atlas importado", TextColor = Colors.LightGray };
     readonly Button play = new() { Text = "▶ Reproduzir (aguardando runtime)", IsEnabled = false };
     readonly List<string> selectedTextures = new();
+    readonly Dictionary<string, byte[]> vulkanTextures = new(StringComparer.OrdinalIgnoreCase);
     readonly SpineGLView texturedView = new();
     readonly Label gpuInfo = new() { Text = "GPU: OpenGL ES 3.0", TextColor = Colors.LightGray };
     AtlasCatalog? atlas;
@@ -29,7 +30,7 @@ public sealed class MainPage : ContentPage
         checkVulkan.Clicked += (_, _) => gpuInfo.Text = VulkanSupport.GetStatus();
         var vulkanPreview = new Button { Text = "Vulkan: testar primeiro quadro" };
         vulkanPreview.Clicked += (_, _) => {
-            try { VulkanPreview.Show(message => MainThread.BeginInvokeOnMainThread(() => gpuInfo.Text = message)); }
+            try { VulkanPreview.Show(message => MainThread.BeginInvokeOnMainThread(() => gpuInfo.Text = message), () => texturedView.GetTriangles(), () => vulkanTextures); }
             catch (Exception ex) { gpuInfo.Text = "Vulkan: " + ex.Message; }
         };
         folderButton.Clicked += ImportFolder;
@@ -58,6 +59,7 @@ public sealed class MainPage : ContentPage
             if (!playing || !Active.IsLoaded || !use41) return;
             Active.Step(dt);
             texturedView.InvalidateSurface();
+            VulkanPreview.Render();
         };
         playbackTimer.Start();
         Content = new ScrollView { Content = new VerticalStackLayout
@@ -97,9 +99,11 @@ public sealed class MainPage : ContentPage
             atlasText = atlasString;
             atlas = catalog;
             selectedTextures.Clear();
+            vulkanTextures.Clear();
             foreach (var png in pngs)
             {
                 texturedView.SetTexture(png.Name, png.Content);
+                vulkanTextures[png.Name] = png.Content;
                 selectedTextures.Add(png.Name);
             }
             atlasInfo.Text = $"Atlas: {catalog.Pages.Count} página(s), {catalog.Pages.Sum(p => p.Regions.Count)} regiões.";
@@ -156,6 +160,7 @@ public sealed class MainPage : ContentPage
             var bytes = buffer.ToArray();
             selectedTextures.Add(file.FileName);
             texturedView.SetTexture(file.FileName, bytes);
+            vulkanTextures[file.FileName] = bytes;
             UpdateTextureStatus();
         }
         catch (Exception ex) { await DisplayAlertAsync("Importação PNG", ex.Message, "OK"); }

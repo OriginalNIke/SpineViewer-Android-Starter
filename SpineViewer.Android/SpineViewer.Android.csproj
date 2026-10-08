@@ -25,6 +25,9 @@
   <ItemGroup><ProjectReference Include="../SpineViewer.Runtime42/SpineViewer.Runtime42.csproj" /></ItemGroup>
   <ItemGroup><ProjectReference Include="../SpineViewer.Runtime41/SpineViewer.Runtime41.csproj" /></ItemGroup>
   <ItemGroup>
+    <AndroidAsset Include="Platforms/Android/Assets/vulkan/*.spv" Link="vulkan/%(Filename)%(Extension)" />
+  </ItemGroup>
+  <ItemGroup>
     <AndroidNativeLibrary Include="Platforms/Android/jniLibs/arm64-v8a/libspine_vulkan.so" Abi="arm64-v8a" Condition="Exists('Platforms/Android/jniLibs/arm64-v8a/libspine_vulkan.so')" />
   </ItemGroup>
 </Project>
