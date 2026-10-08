@@ -1,3 +1,4 @@
+using BlendMode = SpineRuntime41.BlendMode;
 using Microsoft.Maui.Handlers;
 using Android.Opengl;
 using Android.Graphics;
