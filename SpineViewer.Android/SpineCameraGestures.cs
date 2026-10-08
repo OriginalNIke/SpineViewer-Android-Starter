@@ -40,7 +40,7 @@ internal sealed class SpineTouch
     int previousPointers;
     long lastTap;
     public SpineTouch(Action redraw) => this.redraw = redraw;
-    public bool Handle(Android.Views.View view, MotionEvent? e)
+    public bool Handle(global::Android.Views.View view, MotionEvent? e)
     {
         if (e == null) return false;
         var action = e.ActionMasked;

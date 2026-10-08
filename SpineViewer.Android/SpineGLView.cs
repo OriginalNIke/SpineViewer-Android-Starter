@@ -47,7 +47,7 @@ public sealed class SpineGLSurface : GLSurfaceView
         SetRenderer(renderer);
         RenderMode = Rendermode.WhenDirty;
     }
-    public override bool OnTouchEvent(Android.Views.MotionEvent? e) => touch.Handle(this, e);
+    public override bool OnTouchEvent(global::Android.Views.MotionEvent? e) => touch.Handle(this, e);
     public void SetTexture(string name, byte[] png)
     {
         renderer.SetTexture(name, png);
