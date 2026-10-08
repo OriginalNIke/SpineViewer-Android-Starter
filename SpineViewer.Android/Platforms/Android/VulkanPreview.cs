@@ -31,7 +31,32 @@ internal sealed class VulkanPreviewCallback : Java.Lang.Object, ISurfaceHolderCa
     private readonly Func<IReadOnlyList<SpineTriangle>> triangles;
     private readonly Func<IReadOnlyDictionary<string, byte[]>> pngs;
     private readonly HashSet<string> uploaded = new(StringComparer.OrdinalIgnoreCase);
+    // Reuse managed frame buffers and UTF-8 page pointers across animation frames.
+    private float[] vertexScratch = Array.Empty<float>();
+    private int[] countScratch = Array.Empty<int>();
+    private int[] modeScratch = Array.Empty<int>();
+    private IntPtr[] pageScratch = Array.Empty<IntPtr>();
+    private readonly Dictionary<string, IntPtr> pagePointers = new(StringComparer.OrdinalIgnoreCase);
     private int width=1,height=1;
+    private static int Grow(int current, int required) {
+        int size = Math.Max(16, current);
+        while (size < required) size = checked(size * 2);
+        return size;
+    }
+    private void EnsureFrameCapacity(int triangles) {
+        int floats = checked(triangles * 12);
+        if (vertexScratch.Length < floats) Array.Resize(ref vertexScratch, Grow(vertexScratch.Length, floats));
+        // Worst case: every triangle changes its texture or blend mode.
+        if (countScratch.Length < triangles) Array.Resize(ref countScratch, Grow(countScratch.Length, triangles));
+        if (modeScratch.Length < triangles) Array.Resize(ref modeScratch, Grow(modeScratch.Length, triangles));
+        if (pageScratch.Length < triangles) Array.Resize(ref pageScratch, Grow(pageScratch.Length, triangles));
+    }
+    private IntPtr PagePointer(string page) {
+        if (pagePointers.TryGetValue(page, out var pointer)) return pointer;
+        pointer = Marshal.StringToCoTaskMemUTF8(page);
+        pagePointers.Add(page, pointer);
+        return pointer;
+    }
     public VulkanPreviewCallback(Action<string> status, Action presented, Func<IReadOnlyList<SpineTriangle>> triangles, Func<IReadOnlyDictionary<string,byte[]>> pngs) {
         this.status=status;this.presented=presented;this.triangles=triangles;this.pngs=pngs;
     }
@@ -56,6 +81,8 @@ internal sealed class VulkanPreviewCallback : Java.Lang.Object, ISurfaceHolderCa
         VulkanPreview.ClearActive(this);
         if(renderer!=IntPtr.Zero) {VulkanNative.Destroy(renderer);renderer=IntPtr.Zero;}
         uploaded.Clear();
+        foreach (var pointer in pagePointers.Values) Marshal.FreeCoTaskMem(pointer);
+        pagePointers.Clear();
     }
     public void Render() {
         if(renderer==IntPtr.Zero)return;
@@ -82,20 +109,20 @@ internal sealed class VulkanPreviewCallback : Java.Lang.Object, ISurfaceHolderCa
                 }
                 float cx=(minX+maxX)*0.5f,cy=(minY+maxY)*0.5f;
                 float scale=Math.Clamp(Math.Min((width-32f)/Math.Max(1,maxX-minX),(height-32f)/Math.Max(1,maxY-minY)),0.01f,8f);
-                var data=new float[tris.Count*12];var counts=new List<int>();var modes=new List<int>();var names=new List<string>();
-                int n=0;
+                EnsureFrameCapacity(tris.Count);
+                int n=0, batchCount=0;
                 for(int i=0;i<tris.Count;) {
                     var t=tris[i];int start=n;
                     while(i<tris.Count && tris[i].Blend==t.Blend && string.Equals(tris[i].Page,t.Page,StringComparison.OrdinalIgnoreCase)) {
                         var tri=tris[i++];
-                        for(int j=0;j<3;j++) {data[n++]=tri.XY[j*2];data[n++]=tri.XY[j*2+1];data[n++]=tri.UV[j*2];data[n++]=tri.UV[j*2+1];}
+                        for(int j=0;j<3;j++) {vertexScratch[n++]=tri.XY[j*2];vertexScratch[n++]=tri.XY[j*2+1];vertexScratch[n++]=tri.UV[j*2];vertexScratch[n++]=tri.UV[j*2+1];}
                     }
-                    counts.Add(n-start);names.Add(t.Page);
-                    modes.Add(t.Blend switch {BlendMode.Additive=>1,BlendMode.Multiply=>2,BlendMode.Screen=>3,_=>0});
+                    countScratch[batchCount] = n-start;
+                    pageScratch[batchCount] = PagePointer(t.Page);
+                    modeScratch[batchCount] = t.Blend switch {BlendMode.Additive=>1,BlendMode.Multiply=>2,BlendMode.Screen=>3,_=>0};
+                    batchCount++;
                 }
-                IntPtr[] pages=names.Select(Marshal.StringToCoTaskMemUTF8).ToArray();
-                try {VulkanNative.SetFrame(renderer,data,n,counts.ToArray(),modes.ToArray(),pages,pages.Length,cx,cy,scale);}
-                finally {foreach(var p in pages)Marshal.FreeCoTaskMem(p);}
+                VulkanNative.SetFrame(renderer,vertexScratch,n,countScratch,modeScratch,pageScratch,batchCount,cx,cy,scale);
             }
             if(VulkanNative.Draw(renderer)!=1)status("Vulkan: erro ao apresentar quadro");
             else presented();
