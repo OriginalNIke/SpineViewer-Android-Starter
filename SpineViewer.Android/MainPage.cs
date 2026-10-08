@@ -284,7 +284,7 @@ public sealed class MainPage : ContentPage
                 var data = SpineJsonCatalog.Read(System.Text.Encoding.UTF8.GetString(skeleton.Content), skeleton.Name);
                 UpdateCatalogs(data.Skins.ToList(), data.Animations.ToList(), false);
             }
-            await LoadRuntimeCoreAsync();
+            await LoadRuntimeCoreAsync(autoPlay: true);
             status.Text = $"Pasta importada: {skeleton.Name}, {selectedAtlas.Name}, {textures.Count} textura(s). Spine {(use41 ? "4.1" : "4.2")} carregado.";
         }
     }
@@ -351,7 +351,7 @@ public sealed class MainPage : ContentPage
         LoadRuntimeCoreAsync().GetAwaiter().GetResult();
     }
 
-    Task LoadRuntimeCoreAsync()
+    Task LoadRuntimeCoreAsync(bool autoPlay = false)
     {
         if (atlasText == null || skeletonContent == null)
             throw new InvalidOperationException("Importe primeiro um .atlas e um .json ou .skel.");
@@ -363,9 +363,9 @@ public sealed class MainPage : ContentPage
         if (use41) runtime41.Load(atlasText, skeletonContent, skeletonBinary);
         else runtime.Load(atlasText, skeletonContent, skeletonBinary);
         UpdateCatalogs(Active.Skins, Active.Animations, true);
-        playing = false;
-        play.Text = "▶ Reproduzir";
         play.IsEnabled = Active.Animations.Count > 0;
+        playing = autoPlay && play.IsEnabled;
+        play.Text = playing ? "⏸ Pausar" : "▶ Reproduzir";
         texturedView.InvalidateSurface();
         status.Text = $"Spine {(use41 ? "4.1" : "4.2")} carregado: {Active.Skins.Count} skins, {Active.Animations.Count} animações.";
         return Task.CompletedTask;

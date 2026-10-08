@@ -1,0 +1,1 @@
+Ao selecionar ou trocar personagens pela pasta, a primeira animação começa automaticamente. O botão Pausar continua funcional. Importações individuais preservam o comportamento anterior. Não altera renderizadores nem runtimes Spine 4.1/4.2.
