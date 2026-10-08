@@ -97,8 +97,8 @@ internal sealed class SpineGLRenderer : Java.Lang.Object, GLSurfaceView.IRendere
             }
         }
     }
-    const string VertexShader = "#version 300 es\nprecision highp float;\nin vec2 aPos; in vec2 aUV; uniform vec4 uView; uniform float uHalfHeight; out vec2 vUV; void main(){ vec2 p=(aPos-uView.xy)*uView.z; gl_Position=vec4(p.x/uView.w, -p.y/uHalfHeight, 0.0,1.0); vUV=aUV; }";
-    const string FragmentShader = "#version 300 es\nprecision mediump float; in vec2 vUV; uniform sampler2D uTexture; out vec4 frag; void main(){ frag=texture(uTexture,vUV); }";
+    const string VertexShader = "#version 300 es\nprecision highp float;\nin vec2 aPos; in vec2 aUV; uniform vec4 uView; uniform float uHalfHeight; out vec2 vUV; void main(){ vec2 p=(aPos-uView.xy)*uView.z; gl_Position=vec4(p.x/uView.w, p.y/uHalfHeight, 0.0,1.0); vUV=aUV; }";
+    const string FragmentShader = "#version 300 es\nprecision mediump float; in vec2 vUV; uniform sampler2D uTexture; out vec4 frag; void main(){ vec4 c=texture(uTexture,vUV); if(c.a < 0.0039) discard; frag=c; }";
     static int Compile(int type,string source) {
         int shader=GLES30.GlCreateShader(type); GLES30.GlShaderSource(shader,source); GLES30.GlCompileShader(shader);
         int[] ok=new int[1]; GLES30.GlGetShaderiv(shader,GLES30.GlCompileStatus,ok,0);
@@ -118,6 +118,7 @@ internal sealed class SpineGLRenderer : Java.Lang.Object, GLSurfaceView.IRendere
         sizeUniform=GLES30.GlGetUniformLocation(program,"uView"); halfHeightUniform=GLES30.GlGetUniformLocation(program,"uHalfHeight"); samplerUniform=GLES30.GlGetUniformLocation(program,"uTexture");
         GLES30.GlEnable(GLES30.GlBlend); GLES30.GlBlendFunc(GLES30.GlSrcAlpha,GLES30.GlOneMinusSrcAlpha);
         GLES30.GlDisable(GLES30.GlDepthTest);
+        GLES30.GlDisable(GLES30.GlCullFace); // Spine mesh triangles can use either winding.
     }
     public void OnSurfaceChanged(Javax.Microedition.Khronos.Opengles.IGL10? gl,int w,int h)
     {
