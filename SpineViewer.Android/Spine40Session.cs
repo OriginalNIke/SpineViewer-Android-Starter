@@ -24,7 +24,15 @@ public sealed class Spine40Session : ISpinePlayback {
   skeleton.UpdateWorldTransform();
  }
  public void SetSkin(string name) {if(skeleton==null)return; skeleton.SetSkin(name);skeleton.SetSlotsToSetupPose();skeleton.UpdateWorldTransform();}
- public void SetAnimation(string name) => state?.SetAnimation(0,name,true);
+ public void SetAnimation(string name) {
+  if (state == null || skeleton == null) return;
+  // Discard stale track state from the previous animation before switching.
+  state.ClearTrack(0);
+  skeleton.SetToSetupPose();
+  state.SetAnimation(0, name, true);
+  state.Apply(skeleton);
+  skeleton.UpdateWorldTransform();
+ }
  public void Step(float dt) {if(skeleton==null||state==null)return;state.Update(Math.Clamp(dt,0,0.1f));state.Apply(skeleton);skeleton.UpdateWorldTransform();}
  public IReadOnlyList<(float x,float y,float px,float py)> BoneLines() {
   if(skeleton==null)return Array.Empty<(float,float,float,float)>();

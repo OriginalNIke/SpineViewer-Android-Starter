@@ -138,10 +138,8 @@ namespace SpineRuntime40 {
 				AtlasRegion region = (AtlasRegion)this.region;
 				// Note: difference from reference implementation.
 				// Covers rotation since region.width and height are already setup accordingly.
-				// Use the actual atlas page dimensions. Inferring them from a
-				// rotated region's dimensions produces incorrect UVs.
-				float textureWidth = region.page.width;
-				float textureHeight = region.page.height;
+				float textureWidth = this.region.width / (region.u2 - region.u);
+				float textureHeight = this.region.height / (region.v2 - region.v);
 				switch (region.degrees) {
 				case 90:
 					u -= (region.originalHeight - region.offsetY - region.packedWidth) / textureWidth;

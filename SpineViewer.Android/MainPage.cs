@@ -92,7 +92,13 @@ public sealed class MainPage : ContentPage
             float dt = Math.Clamp((float)((now - lastFrame) / (double)System.Diagnostics.Stopwatch.Frequency), 0f, 0.1f);
             lastFrame = now;
             if (!playing || !Active.IsLoaded) return;
-            Active.Step(dt);
+            try { Active.Step(dt); }
+            catch (Exception ex) {
+                playing = false;
+                play.Text = "▶ Reproduzir";
+                status.Text = "Erro ao atualizar animação: " + ex.Message;
+                return;
+            }
             if (rendererChoice.SelectedIndex == 1) vulkanView.InvalidateSurface();
             else texturedView.InvalidateSurface();
             frameSamples++;
@@ -125,7 +131,8 @@ public sealed class MainPage : ContentPage
                 play, status }
         }};
         skins.SelectedIndexChanged += (_, _) => { if (updatingSelection || skins.SelectedItem is not string s) return; Active.SetSkin(s); InvalidateActiveRenderer(); status.Text = $"Skin: {s}"; };
-        animations.SelectedIndexChanged += (_, _) => { if (updatingSelection || animations.SelectedItem is not string a) return; Active.SetAnimation(a); InvalidateActiveRenderer(); status.Text = $"Animação: {a}"; };
+        animations.SelectedIndexChanged += (_, _) => { if (updatingSelection || animations.SelectedItem is not string a) return; try { Active.SetAnimation(a); InvalidateActiveRenderer(); status.Text = $"Animação: {a}"; }
+            catch (Exception ex) { playing = false; play.Text = "▶ Reproduzir"; status.Text = "Erro ao trocar animação: " + ex.Message; } };
     }
     static void MoveSelection(Picker picker, int direction)
     {
