@@ -14,3 +14,7 @@ Esta atualização inclui o runtime 4.1 do SpineViewer original e seleção auto
 - A detecção automática nesta etapa se concentra no cabeçalho `.skel`; JSON segue o runtime 4.2.
 - A compilação Android não foi executada neste ambiente; validar no GitHub Actions.
 - Verifique as condições de licença do Spine Runtime antes da redistribuição.
+
+## Correção de compilação CS1503
+
+`SpineTexturedRenderer.cs`: `SKVertices.CreateCopy` agora recebe quatro argumentos (`mode`, `positions`, `texs`, `colors`), passando `null` para cores opcionais. Removido `SKPaint.FilterQuality` obsoleto. Ainda requer validação pelo GitHub Actions e teste de renderização no dispositivo.

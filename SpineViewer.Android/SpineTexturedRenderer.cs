@@ -41,9 +41,9 @@ public sealed class SpineTexturedRenderer : SKCanvasView
                 points[i]=new SKPoint(e.Info.Width/2f+(tri.XY[2*i]-cx)*scale,e.Info.Height/2f-(tri.XY[2*i+1]-cy)*scale);
                 uvs[i]=new SKPoint(tri.UV[2*i]*bmp.Width,tri.UV[2*i+1]*bmp.Height);
             }
-            using var vertices=SKVertices.CreateCopy(SKVertexMode.Triangles,points,uvs);
+            using var vertices=SKVertices.CreateCopy(SKVertexMode.Triangles, points, uvs, null);
             using var shader=SKShader.CreateBitmap(bmp,SKShaderTileMode.Clamp,SKShaderTileMode.Clamp);
-            using var paint=new SKPaint { Shader=shader,IsAntialias=true,FilterQuality=SKFilterQuality.Medium };
+            using var paint=new SKPaint { Shader=shader,IsAntialias=true };
             canvas.DrawVertices(vertices,SKBlendMode.Modulate,paint);
         }
     }
