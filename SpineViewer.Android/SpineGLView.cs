@@ -62,6 +62,7 @@ internal sealed class SpineGLRenderer : Java.Lang.Object, GLSurfaceView.IRendere
     readonly Dictionary<string, int> textureIds = new(StringComparer.OrdinalIgnoreCase);
     readonly List<(string page, float[] vertices)> batches = new();
     int program, posAttr, uvAttr, samplerUniform, sizeUniform;
+    int vertexBuffer;
     int width = 1, height = 1;
     float centerX, centerY, scale = 1;
     public void SetTexture(string name, byte[] bytes)
@@ -107,6 +108,9 @@ internal sealed class SpineGLRenderer : Java.Lang.Object, GLSurfaceView.IRendere
     public void OnSurfaceCreated(Javax.Microedition.Khronos.Opengles.IGL10? gl, Javax.Microedition.Khronos.Egl.EGLConfig? config)
     {
         textureIds.Clear();
+        int[] vboIds = new int[1];
+        GLES30.GlGenBuffers(1, vboIds, 0);
+        vertexBuffer = vboIds[0];
         int vs=Compile(GLES30.GlVertexShader,VertexShader), fs=Compile(GLES30.GlFragmentShader,FragmentShader);
         program=GLES30.GlCreateProgram(); GLES30.GlAttachShader(program,vs); GLES30.GlAttachShader(program,fs); GLES30.GlLinkProgram(program);
         GLES30.GlDeleteShader(vs); GLES30.GlDeleteShader(fs);
@@ -139,20 +143,22 @@ internal sealed class SpineGLRenderer : Java.Lang.Object, GLSurfaceView.IRendere
         GLES30.GlUseProgram(program);
         lock(sync) {
             GLES30.GlUniform4f(sizeUniform,centerX,centerY,scale,Math.Max(1,width)*0.5f);
-            // Correct aspect ratio by transforming Y on CPU below.
+            // Vertex shader handles viewport aspect ratio.
             foreach(var (page,source) in batches) {
                 if(!pngs.TryGetValue(page,out var png)) continue;
                 int id=GetTexture(page,png); if(id==0) continue;
-                float[] data=(float[])source.Clone();
-                for(int i=0;i<data.Length;i+=4) data[i+1]=centerY+(data[i+1]-centerY)*width/(float)height;
-                var buffer=ByteBuffer.AllocateDirect(data.Length*4).Order(ByteOrder.NativeOrder()).AsFloatBuffer();
-                buffer.Put(data); buffer.Position(0);
+                // Upload interleaved XYUV data to a GPU VBO. Attribute offsets are
+                // byte offsets (0 and 8), not positions in a Java FloatBuffer.
+                var buffer=ByteBuffer.AllocateDirect(source.Length*4).Order(ByteOrder.NativeOrder()).AsFloatBuffer();
+                buffer.Put(source); buffer.Position(0);
+                GLES30.GlBindBuffer(GLES30.GlArrayBuffer,vertexBuffer);
+                GLES30.GlBufferData(GLES30.GlArrayBuffer,source.Length*4,buffer,GLES30.GlStreamDraw);
                 GLES30.GlActiveTexture(GLES30.GlTexture0); GLES30.GlBindTexture(GLES30.GlTexture2d,id);
                 GLES30.GlUniform1i(samplerUniform,0);
                 GLES30.GlEnableVertexAttribArray(posAttr); GLES30.GlEnableVertexAttribArray(uvAttr);
-                buffer.Position(0); GLES30.GlVertexAttribPointer(posAttr,2,GLES30.GlFloat,false,16,buffer);
-                buffer.Position(2); GLES30.GlVertexAttribPointer(uvAttr,2,GLES30.GlFloat,false,16,buffer);
-                GLES30.GlDrawArrays(GLES30.GlTriangles,0,data.Length/4);
+                GLES30.GlVertexAttribPointer(posAttr,2,GLES30.GlFloat,false,16,0);
+                GLES30.GlVertexAttribPointer(uvAttr,2,GLES30.GlFloat,false,16,8);
+                GLES30.GlDrawArrays(GLES30.GlTriangles,0,source.Length/4);
             }
         }
     }
