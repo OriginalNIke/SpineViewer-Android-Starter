@@ -1,0 +1,1 @@
+Corrige o enquadramento após o layout compacto: o OpenGL recalcula a escala uniforme a cada renderização usando a largura/altura atuais da superfície, evitando uma escala obsoleta após redimensionamento. Vulkan usa escala uniforme com limites seguros. Mantém o layout compacto e os runtimes 4.1/4.2. Não compilado/testado no Android.

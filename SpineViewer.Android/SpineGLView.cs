@@ -74,6 +74,7 @@ internal sealed class SpineGLRenderer : Java.Lang.Object, GLSurfaceView.IRendere
     {
         lock (sync) pngs[name] = (byte[])bytes.Clone();
     }
+    private float modelWidth = 1f, modelHeight = 1f;
     public void UpdateFrame(IReadOnlyList<SpineTriangle> triangles)
     {
         lock (sync)
@@ -86,7 +87,8 @@ internal sealed class SpineGLRenderer : Java.Lang.Object, GLSurfaceView.IRendere
                 minY=Math.Min(minY,t.XY[j+1]); maxY=Math.Max(maxY,t.XY[j+1]);
             }
             centerX=(minX+maxX)*0.5f; centerY=(minY+maxY)*0.5f;
-            scale=Math.Clamp(Math.Min((width-32f)/Math.Max(1,maxX-minX),(height-32f)/Math.Max(1,maxY-minY)),0.01f,8f);
+            modelWidth = Math.Max(1f, maxX-minX);
+            modelHeight = Math.Max(1f, maxY-minY);
             int start=0;
             while(start<triangles.Count) {
                 string page=triangles[start].Page;
@@ -153,6 +155,9 @@ internal sealed class SpineGLRenderer : Java.Lang.Object, GLSurfaceView.IRendere
         GLES30.GlUseProgram(program);
         lock(sync) {
             var camera = SpineCamera.Snapshot();
+            // Recalculate a single uniform XY scale using the CURRENT surface dimensions.
+            // The preview grid can resize when the options panel is expanded/collapsed.
+            scale = Math.Clamp(Math.Min(Math.Max(1f,width-32f)/modelWidth, Math.Max(1f,height-32f)/modelHeight),0.01f,8f);
             float effectiveScale = scale * camera.Zoom;
             GLES30.GlUniform4f(sizeUniform,centerX-camera.PanX/effectiveScale,centerY+camera.PanY/effectiveScale,effectiveScale,Math.Max(1,width)*0.5f);
             GLES30.GlUniform1f(halfHeightUniform, Math.Max(1,height)*0.5f);
