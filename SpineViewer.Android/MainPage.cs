@@ -39,7 +39,7 @@ public sealed class MainPage : ContentPage
         play.Text = "▶ Reproduzir";
         play.Clicked += (_, _) => { playing = !playing; play.Text = playing ? "⏸ Pausar" : "▶ Reproduzir"; };
         playbackTimer = Dispatcher.CreateTimer();
-        playbackTimer.Interval = TimeSpan.FromMilliseconds(33); // limite aproximado de 30 FPS
+        playbackTimer.Interval = TimeSpan.FromMilliseconds(16); // alvo de 60 FPS; temporizador UI não garante sincronização com VSync
         var frameClock = System.Diagnostics.Stopwatch.StartNew();
         long lastFrame = frameClock.ElapsedTicks;
         playbackTimer.Tick += (_, _) =>
