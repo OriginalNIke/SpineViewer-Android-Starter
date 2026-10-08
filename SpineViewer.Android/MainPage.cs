@@ -5,10 +5,13 @@ public sealed class MainPage : ContentPage
     readonly Label status = new() { Text = "Importe JSON, atlas e texturas para começar.", TextColor = Colors.LightGray };
     readonly Picker skins = new() { Title = "Selecionar skin", TextColor = Colors.White, TitleColor = Colors.LightGray };
     readonly Picker animations = new() { Title = "Selecionar animação", TextColor = Colors.White, TitleColor = Colors.LightGray };
-    readonly Entry skinSearch = new() { Placeholder = "Pesquisar skin...", TextColor = Colors.White, PlaceholderColor = Colors.Gray, ClearButtonVisibility = ClearButtonVisibility.WhileEditing };
     readonly Entry animationSearch = new() { Placeholder = "Pesquisar animação...", TextColor = Colors.White, PlaceholderColor = Colors.Gray, ClearButtonVisibility = ClearButtonVisibility.WhileEditing };
     readonly Label skinCount = new() { Text = "Nenhuma skin", TextColor = Colors.LightGray, FontSize = 12 };
     readonly Label animationCount = new() { Text = "Nenhuma animação", TextColor = Colors.LightGray, FontSize = 12 };
+    readonly Picker characters = new() { Title = "Selecionar personagem", TextColor = Colors.White, TitleColor = Colors.LightGray };
+    readonly Label characterCount = new() { Text = "Nenhum personagem", TextColor = Colors.LightGray, FontSize = 12 };
+    IReadOnlyList<FolderImporter.Entry>? folderFiles;
+    bool updatingCharacter;
     IReadOnlyList<string> allSkins = Array.Empty<string>();
     IReadOnlyList<string> allAnimations = Array.Empty<string>();
     bool updatingSelection;
@@ -75,8 +78,17 @@ public sealed class MainPage : ContentPage
         nextSkin.Clicked += (_, _) => MoveSelection(skins, 1);
         previousAnimation.Clicked += (_, _) => MoveSelection(animations, -1);
         nextAnimation.Clicked += (_, _) => MoveSelection(animations, 1);
-        skinSearch.TextChanged += (_, _) => FilterPicker(skins, allSkins, skinSearch.Text, skinCount, "skins");
         animationSearch.TextChanged += (_, _) => FilterPicker(animations, allAnimations, animationSearch.Text, animationCount, "animações");
+        var previousCharacter = new Button { Text = "◀ Personagem" };
+        var nextCharacter = new Button { Text = "Personagem ▶" };
+        previousCharacter.Clicked += (_, _) => MoveSelection(characters, -1);
+        nextCharacter.Clicked += (_, _) => MoveSelection(characters, 1);
+        characters.SelectedIndexChanged += async (_, _) =>
+        {
+            if (updatingCharacter || folderFiles is null || characters.SelectedItem is not string name) return;
+            try { await LoadCharacterFromFolderAsync(folderFiles, name); }
+            catch (Exception ex) { await DisplayAlertAsync("Trocar personagem", ex.Message, "OK"); }
+        };
         play.Text = "▶ Reproduzir";
         play.Clicked += (_, _) => { playing = !playing; play.Text = playing ? "⏸ Pausar" : "▶ Reproduzir"; };
         playbackTimer = Dispatcher.CreateTimer();
@@ -126,7 +138,9 @@ public sealed class MainPage : ContentPage
             Children = { new Label { Text = "SpineViewer Android", FontSize = 25, FontAttributes = FontAttributes.Bold, TextColor = Colors.White },
                 menuButton, optionsPanel, texturedView, vulkanView,
                 fpsInfo, performanceInfo,
-                new Label { Text = "Skins", TextColor = Colors.White, FontAttributes = FontAttributes.Bold }, skinSearch, skinCount, skins,
+                new Label { Text = "Personagens", TextColor = Colors.White, FontAttributes = FontAttributes.Bold }, characterCount, characters,
+                new HorizontalStackLayout { Spacing = 8, Children = { previousCharacter, nextCharacter } },
+                new Label { Text = "Skins", TextColor = Colors.White, FontAttributes = FontAttributes.Bold }, skinCount, skins,
                 new HorizontalStackLayout { Spacing = 8, Children = { previousSkin, nextSkin } },
                 new Label { Text = "Animações", TextColor = Colors.White, FontAttributes = FontAttributes.Bold }, animationSearch, animationCount, animations,
                 new HorizontalStackLayout { Spacing = 8, Children = { previousAnimation, nextAnimation } },
@@ -160,7 +174,6 @@ public sealed class MainPage : ContentPage
     {
         allSkins = availableSkins.ToArray();
         allAnimations = availableAnimations.ToArray();
-        skinSearch.Text = string.Empty;
         animationSearch.Text = string.Empty;
         FilterPicker(skins, allSkins, null, skinCount, "skins");
         FilterPicker(animations, allAnimations, null, animationCount, "animações");
@@ -192,21 +205,28 @@ public sealed class MainPage : ContentPage
             if (files is null) return;
             var skeletons = files.Where(f => f.Name.EndsWith(".skel", StringComparison.OrdinalIgnoreCase) ||
                                              f.Name.EndsWith(".json", StringComparison.OrdinalIgnoreCase)).ToList();
-            var atlases = files.Where(f => f.Name.EndsWith(".atlas", StringComparison.OrdinalIgnoreCase)).ToList();
-            if (skeletons.Count == 0 || atlases.Count == 0)
+            if (skeletons.Count == 0 || !files.Any(f => f.Name.EndsWith(".atlas", StringComparison.OrdinalIgnoreCase)))
                 throw new InvalidDataException("Nenhum conjunto Spine (.skel/.json e .atlas) encontrado na pasta ou subpastas.");
-            // A single runtime displays one skeleton at a time. Offer the discovered
-            // relative paths when multiple skeletons exist instead of mixing assets.
-            FolderImporter.Entry skeleton;
-            if (skeletons.Count == 1) skeleton = skeletons[0];
-            else
+            folderFiles = files;
+            updatingCharacter = true;
+            try
             {
-                string cancel = "Cancelar";
-                var selection = await DisplayActionSheetAsync("Escolha o personagem encontrado", cancel, null,
-                    skeletons.Select(f => f.Name).ToArray());
-                if (string.IsNullOrEmpty(selection) || selection == cancel) return;
-                skeleton = skeletons.First(f => f.Name == selection);
+                characters.ItemsSource = skeletons.Select(f => f.Name).ToList();
+                characterCount.Text = $"{skeletons.Count} personagem(ns)";
+                characters.SelectedIndex = 0;
             }
+            finally { updatingCharacter = false; }
+            await LoadCharacterFromFolderAsync(files, skeletons[0].Name);
+        }
+        catch (Exception ex) { await DisplayAlertAsync("Importar pasta", ex.Message, "OK"); }
+    }
+
+    async Task LoadCharacterFromFolderAsync(IReadOnlyList<FolderImporter.Entry> files, string characterPath)
+    {
+        var skeleton = files.First(f => f.Name.Equals(characterPath, StringComparison.Ordinal));
+        var atlases = files.Where(f => f.Name.EndsWith(".atlas", StringComparison.OrdinalIgnoreCase)).ToList();
+        if (atlases.Count == 0) throw new InvalidDataException("Nenhum atlas encontrado.");
+        {
             bool binary = skeleton.Name.EndsWith(".skel", StringComparison.OrdinalIgnoreCase);
             string stem = Path.GetFileNameWithoutExtension(skeleton.FileName);
             // Prefer an atlas beside the skeleton with the same basename.
@@ -266,7 +286,6 @@ public sealed class MainPage : ContentPage
             await LoadRuntimeCoreAsync();
             status.Text = $"Pasta importada: {skeleton.Name}, {selectedAtlas.Name}, {textures.Count} textura(s). Spine {(use41 ? "4.1" : "4.2")} carregado.";
         }
-        catch (Exception ex) { await DisplayAlertAsync("Importar pasta", ex.Message, "OK"); }
     }
 
     async void ImportJson(object? sender, EventArgs e)
