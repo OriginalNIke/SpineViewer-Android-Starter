@@ -27,6 +27,11 @@ public sealed class MainPage : ContentPage
         var folderButton = new Button { Text = "📁 Selecionar pasta do personagem" };
         var checkVulkan = new Button { Text = "Verificar suporte Vulkan" };
         checkVulkan.Clicked += (_, _) => gpuInfo.Text = VulkanSupport.GetStatus();
+        var vulkanPreview = new Button { Text = "Vulkan: testar primeiro quadro" };
+        vulkanPreview.Clicked += (_, _) => {
+            try { VulkanPreview.Show(message => MainThread.BeginInvokeOnMainThread(() => gpuInfo.Text = message)); }
+            catch (Exception ex) { gpuInfo.Text = "Vulkan: " + ex.Message; }
+        };
         folderButton.Clicked += ImportFolder;
         var json = new Button { Text = "Importar JSON Spine" };
         json.Clicked += ImportJson;
@@ -59,7 +64,7 @@ public sealed class MainPage : ContentPage
         {
             Padding = new Thickness(18, 24), Spacing = 14,
             Children = { new Label { Text = "SpineViewer Android", FontSize = 25, FontAttributes = FontAttributes.Bold, TextColor = Colors.White },
-                folderButton, json, atlasButton, imageButton, binaryButton, loadRuntime, checkVulkan, gpuInfo, texturedView,
+                folderButton, json, atlasButton, imageButton, binaryButton, loadRuntime, checkVulkan, vulkanPreview, gpuInfo, texturedView,
                 atlasInfo, new Label { Text = "Skins", TextColor = Colors.White }, skins,
                 new Label { Text = "Animações", TextColor = Colors.White }, animations, play, status }
         }};
