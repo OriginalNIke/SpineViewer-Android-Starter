@@ -26,7 +26,7 @@ Pendente:
 4. Alternativamente, use .NET SDK 8 com workload `maui-android` e execute:
 
 ```sh
-dotnet publish SpineViewer.Android/SpineViewer.Android.csproj -f net8.0-android -c Release -p:AndroidPackageFormat=apk
+dotnet publish SpineViewer.Android/SpineViewer.Android.csproj -f net10.0-android -c Release -p:AndroidPackageFormat=apk
 ```
 
 O ambiente usado para preparar este ZIP não possui `dotnet`, então **o build ainda não foi verificado**. Dependências do Android SDK/workload podem precisar de ajustes no runner.
