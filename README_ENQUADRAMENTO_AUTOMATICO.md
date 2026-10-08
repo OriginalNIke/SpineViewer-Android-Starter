@@ -1,0 +1,1 @@
+Enquadramento automático: escala uniforme com margem de 5% por lado em OpenGL e Vulkan; centralização pelos limites da geometria atual; câmera reiniciada ao carregar personagem; botão Centralizar / Ajustar restaura zoom e posição. Não compilado/testado no dispositivo.

@@ -101,7 +101,7 @@ internal sealed class VulkanPreviewCallback : Java.Lang.Object, ISurfaceHolderCa
                 }
                 float cx=(minX+maxX)*0.5f,cy=(minY+maxY)*0.5f;
                 // Fit uniformly into the actual Vulkan surface without stretching X or Y.
-                float scale=Math.Clamp(Math.Min(Math.Max(1f,width-32f)/Math.Max(1f,maxX-minX),Math.Max(1f,height-32f)/Math.Max(1f,maxY-minY)),0.01f,8f);
+                float scale=Math.Clamp(Math.Min(Math.Max(1f,width*0.90f)/Math.Max(1f,maxX-minX),Math.Max(1f,height*0.90f)/Math.Max(1f,maxY-minY)),0.01f,8f);
                 EnsureFrameCapacity(tris.Count);
                 int n=0, batchCount=0;
                 for(int i=0;i<tris.Count;) {

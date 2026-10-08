@@ -203,8 +203,27 @@ public sealed class MainPage : ContentPage
         AddSelector(2, "Animação", animations, previousAnimation, nextAnimation);
         play.FontSize = 13;
         play.Padding = new Thickness(8, 5);
+        var fitButton = new Button { Text = "⊡ Centralizar / Ajustar", FontSize = 13,
+            Padding = new Thickness(8, 5) };
+        fitButton.Clicked += (_, _) =>
+        {
+            SpineCamera.Reset();
+            InvalidateActiveRenderer();
+        };
+        var playbackControls = new Grid
+        {
+            ColumnSpacing = 4,
+            ColumnDefinitions = new ColumnDefinitionCollection
+            {
+                new ColumnDefinition(GridLength.Star),
+                new ColumnDefinition(GridLength.Star)
+            }
+        };
+        playbackControls.Add(play);
+        playbackControls.Add(fitButton);
+        Grid.SetColumn(fitButton, 1);
         var controls = new VerticalStackLayout { Spacing = 2,
-            Children = { selectors, play } };
+            Children = { selectors, playbackControls } };
         layout.Add(controls);
         Grid.SetRow(controls, 3);
         // Diagnósticos continuam disponíveis no menu, sem ocupar a área de animação.
@@ -432,6 +451,7 @@ public sealed class MainPage : ContentPage
         else runtime.Load(atlasText, skeletonContent, skeletonBinary);
         UpdateCatalogs(Active.Skins, Active.Animations, true);
         play.IsEnabled = Active.Animations.Count > 0;
+        SpineCamera.Reset(); // Reinicia a câmera ao trocar personagem.
         playing = autoPlay && play.IsEnabled;
         play.Text = playing ? "⏸ Pausar" : "▶ Reproduzir";
         texturedView.InvalidateSurface();

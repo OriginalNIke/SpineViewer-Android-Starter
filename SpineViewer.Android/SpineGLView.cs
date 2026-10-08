@@ -157,7 +157,7 @@ internal sealed class SpineGLRenderer : Java.Lang.Object, GLSurfaceView.IRendere
             var camera = SpineCamera.Snapshot();
             // Recalculate a single uniform XY scale using the CURRENT surface dimensions.
             // The preview grid can resize when the options panel is expanded/collapsed.
-            scale = Math.Clamp(Math.Min(Math.Max(1f,width-32f)/modelWidth, Math.Max(1f,height-32f)/modelHeight),0.01f,8f);
+            scale = Math.Clamp(Math.Min(Math.Max(1f,width*0.90f)/modelWidth, Math.Max(1f,height*0.90f)/modelHeight),0.01f,8f);
             float effectiveScale = scale * camera.Zoom;
             GLES30.GlUniform4f(sizeUniform,centerX-camera.PanX/effectiveScale,centerY+camera.PanY/effectiveScale,effectiveScale,Math.Max(1,width)*0.5f);
             GLES30.GlUniform1f(halfHeightUniform, Math.Max(1,height)*0.5f);
