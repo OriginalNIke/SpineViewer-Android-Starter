@@ -173,6 +173,16 @@ public static class Spine41Geometry
                 int k0 = indices[i] * 2, k1 = indices[i+1] * 2, k2 = indices[i+2] * 2;
                 if (k0 < 0 || k1 < 0 || k2 < 0 || k0 + 1 >= length || k1 + 1 >= length || k2 + 1 >= length ||
                     k0 + 1 >= uv.Length || k1 + 1 >= uv.Length || k2 + 1 >= uv.Length) continue;
+                // Corrupted or degenerate mesh triangles can produce huge GPU artifacts.
+                if (!float.IsFinite(xy[k0]) || !float.IsFinite(xy[k0+1]) ||
+                    !float.IsFinite(xy[k1]) || !float.IsFinite(xy[k1+1]) ||
+                    !float.IsFinite(xy[k2]) || !float.IsFinite(xy[k2+1]) ||
+                    !float.IsFinite(uv[k0]) || !float.IsFinite(uv[k0+1]) ||
+                    !float.IsFinite(uv[k1]) || !float.IsFinite(uv[k1+1]) ||
+                    !float.IsFinite(uv[k2]) || !float.IsFinite(uv[k2+1])) continue;
+                float cross = (xy[k1]-xy[k0]) * (xy[k2+1]-xy[k0+1]) -
+                              (xy[k1+1]-xy[k0+1]) * (xy[k2]-xy[k0]);
+                if (!float.IsFinite(cross) || Math.Abs(cross) < 0.000001f) continue;
                 int index = active.Count;
                 if (index == pool.Count) pool.Add(new SpineTriangle());
                 var triangle = pool[index];
