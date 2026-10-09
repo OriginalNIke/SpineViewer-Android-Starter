@@ -581,6 +581,13 @@ void* spine_vk_create_surface(void* jniEnv, void* javaSurface) {
     ANativeWindow_release(window);
     return handle;
 }
+int spine_vk_get_extent(void* handle, int* width, int* height) {
+    auto* r = static_cast<Renderer*>(handle);
+    if (!r || !width || !height || !r->extent.width || !r->extent.height) return 0;
+    *width = static_cast<int>(r->extent.width);
+    *height = static_cast<int>(r->extent.height);
+    return 1;
+}
 void spine_vk_set_background(void* handle, float red, float green, float blue) {
     auto* r = static_cast<Renderer*>(handle);
     if (!r) return;

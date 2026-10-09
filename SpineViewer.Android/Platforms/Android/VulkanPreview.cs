@@ -16,6 +16,8 @@ internal static class VulkanNative {
     internal static extern void SetBackground(IntPtr renderer, float red, float green, float blue);
     [DllImport("spine_vulkan", EntryPoint="spine_vk_set_background_image", CharSet=CharSet.Ansi)]
     internal static extern void SetBackgroundImage(IntPtr renderer, [MarshalAs(UnmanagedType.LPUTF8Str)] string name, float aspect);
+    [DllImport("spine_vulkan", EntryPoint="spine_vk_get_extent")]
+    internal static extern int GetExtent(IntPtr renderer, out int width, out int height);
     [DllImport("spine_vulkan", EntryPoint="spine_vk_draw_clear")]
     internal static extern int Draw(IntPtr renderer);
     [DllImport("spine_vulkan", EntryPoint="spine_vk_destroy")]
@@ -42,6 +44,7 @@ internal sealed class VulkanPreviewCallback : Java.Lang.Object, ISurfaceHolderCa
     private IntPtr[] pageScratch = Array.Empty<IntPtr>();
     private readonly Dictionary<string, IntPtr> pagePointers = new(StringComparer.OrdinalIgnoreCase);
     private int width=1,height=1;
+    private int initializedWidth, initializedHeight;
     private int bgVersion = -1;
     private static int Grow(int current, int required) {
         int size = Math.Max(16, current);
@@ -74,6 +77,8 @@ internal sealed class VulkanPreviewCallback : Java.Lang.Object, ISurfaceHolderCa
         try {
             renderer=VulkanNative.Create(JNIEnv.Handle,holder.Surface!.Handle);
             if(renderer==IntPtr.Zero) {status("Vulkan: falha ao inicializar");return;}
+            initializedWidth = width;
+            initializedHeight = height;
             using var vert=Platform.CurrentActivity!.Assets!.Open("vulkan/spine.vert.spv");
             using var frag=Platform.CurrentActivity!.Assets!.Open("vulkan/spine.frag.spv");
             using var vb=new MemoryStream();using var fb=new MemoryStream();
@@ -87,6 +92,15 @@ internal sealed class VulkanPreviewCallback : Java.Lang.Object, ISurfaceHolderCa
         width=Math.Max(1,w);
         height=Math.Max(1,h);
         if (w <= 1 || h <= 1) return;
+        // The swapchain extent is immutable: rebuild when Android reports a new size.
+        // In particular, a SurfaceView may initially report provisional dimensions.
+        if (renderer != IntPtr.Zero && (initializedWidth != width || initializedHeight != height))
+        {
+            VulkanNative.Destroy(renderer);
+            renderer = IntPtr.Zero;
+            uploaded.Clear();
+            bgVersion = -1;
+        }
         InitializeRenderer(holder);
         Render();
     }
@@ -95,6 +109,8 @@ internal sealed class VulkanPreviewCallback : Java.Lang.Object, ISurfaceHolderCa
         VulkanPreview.ClearActive(this);
         if(renderer!=IntPtr.Zero) {VulkanNative.Destroy(renderer);renderer=IntPtr.Zero;}
         uploaded.Clear();
+        bgVersion = -1;
+        initializedWidth = initializedHeight = 0;
         foreach (var pointer in pagePointers.Values) Marshal.FreeCoTaskMem(pointer);
         pagePointers.Clear();
     }
@@ -129,8 +145,15 @@ internal sealed class VulkanPreviewCallback : Java.Lang.Object, ISurfaceHolderCa
                     minY=Math.Min(minY,t.XY[j+1]);maxY=Math.Max(maxY,t.XY[j+1]);
                 }
                 float cx=(minX+maxX)*0.5f,cy=(minY+maxY)*0.5f;
-                // Fit uniformly into the actual Vulkan surface without stretching X or Y.
-                float scale=Math.Clamp(Math.Min(Math.Max(1f,width*0.90f)/Math.Max(1f,maxX-minX),Math.Max(1f,height*0.90f)/Math.Max(1f,maxY-minY)),0.01f,8f);
+                // Native projection uses swapchain extent, not SurfaceView layout size.
+                // Query the exact dimensions used by Vulkan's viewport/push constants.
+                int fitWidth = width, fitHeight = height;
+                if (VulkanNative.GetExtent(renderer, out int actualWidth, out int actualHeight) == 1)
+                {
+                    fitWidth = actualWidth;
+                    fitHeight = actualHeight;
+                }
+                float scale = SpineFit.Calculate(fitWidth, fitHeight, maxX-minX, maxY-minY);
                 EnsureFrameCapacity(tris.Count);
                 int n=0, batchCount=0;
                 for(int i=0;i<tris.Count;) {
