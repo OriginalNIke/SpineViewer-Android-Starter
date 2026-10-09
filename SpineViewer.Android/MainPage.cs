@@ -2,7 +2,7 @@ using SpineViewer.Core;
 namespace SpineViewer.Android;
 public sealed class MainPage : ContentPage
 {
-    readonly Label status = new() { Text = "Importe JSON, atlas e texturas para começar.", TextColor = Colors.LightGray };
+    readonly Label status = new() { Text = "Selecione a pasta do personagem para começar.", TextColor = Colors.LightGray };
     readonly Picker skins = new() { Title = "Selecionar skin", TextColor = Colors.White, TitleColor = Colors.LightGray };
     readonly Picker animations = new() { Title = "Selecionar animação", TextColor = Colors.White, TitleColor = Colors.LightGray };
     readonly Label skinCount = new() { Text = "Nenhuma skin", TextColor = Colors.LightGray, FontSize = 12 };
@@ -46,8 +46,6 @@ public sealed class MainPage : ContentPage
         Title = "SpineViewer Android";
         BackgroundColor = Color.FromArgb("#111827");
         var folderButton = new Button { Text = "📁 Selecionar pasta do personagem" };
-        var checkVulkan = new Button { Text = "Verificar suporte Vulkan" };
-        checkVulkan.Clicked += (_, _) => gpuInfo.Text = VulkanSupport.GetStatus();
         rendererChoice.ItemsSource = new List<string> { "OpenGL ES 3.0", "Vulkan (integrado)" };
         // Restaurar o renderizador escolhido na última execução.
         rendererChoice.SelectedIndex = Preferences.Default.Get("preferred_renderer", 0) == 1 ? 1 : 0;
@@ -67,12 +65,6 @@ public sealed class MainPage : ContentPage
         folderButton.Clicked += ImportFolder;
         var json = new Button { Text = "Importar JSON Spine" };
         json.Clicked += ImportJson;
-        var atlasButton = new Button { Text = "Importar .atlas" };
-        atlasButton.Clicked += ImportAtlas;
-        var imageButton = new Button { Text = "Importar textura PNG" };
-        imageButton.Clicked += ImportTexture;
-        var binaryButton = new Button { Text = "Inspecionar .skel" };
-        binaryButton.Clicked += ImportSkel;
         texturedView.GetTriangles = () => use41 ? runtime41.TexturedTriangles() : runtime.TexturedTriangles();
         var previousSkin = new Button { Text = "◀ Skin" };
         var nextSkin = new Button { Text = "Skin ▶" };
@@ -229,9 +221,8 @@ public sealed class MainPage : ContentPage
         // Menu recolhível: controles de importação e diagnóstico não ocupam a área do personagem.
         var menuButton = new Button { Text = "☰  Opções  ▾", HorizontalOptions = LayoutOptions.Fill };
         var optionsPanel = new VerticalStackLayout { Spacing = 12, IsVisible = false,
-            Children = { folderButton, json, atlasButton, imageButton, binaryButton,
-                rendererChoice, new Label { Text = "Fundo da animação", TextColor = Colors.White },
-                backgroundPicker, customBackground, applyBackground, selectBackgroundImage, clearBackgroundImage, checkVulkan, gpuInfo, atlasInfo } };
+            Children = { folderButton, json, rendererChoice, new Label { Text = "Fundo da animação", TextColor = Colors.White },
+                backgroundPicker, customBackground, applyBackground, selectBackgroundImage, clearBackgroundImage } };
         menuButton.Clicked += (_, _) =>
         {
             optionsPanel.IsVisible = !optionsPanel.IsVisible;
@@ -261,6 +252,24 @@ public sealed class MainPage : ContentPage
         var preview = new Grid();
         preview.Add(texturedView);
         preview.Add(vulkanView);
+        // Monitoramento visível sobre a tela do personagem, independente do menu.
+        // InputTransparent evita bloquear zoom, arraste e toques no visualizador.
+        var monitoring = new VerticalStackLayout
+        {
+            Spacing = 1,
+            Padding = new Thickness(6, 4),
+            BackgroundColor = Color.FromArgb("#B0111827"),
+            HorizontalOptions = LayoutOptions.Start,
+            VerticalOptions = LayoutOptions.Start,
+            InputTransparent = true,
+            MaximumWidthRequest = 330,
+            Children = { gpuInfo, fpsInfo, performanceInfo, status }
+        };
+        gpuInfo.FontSize = 10;
+        fpsInfo.FontSize = 10;
+        performanceInfo.FontSize = 10;
+        status.FontSize = 10;
+        preview.Add(monitoring);
         texturedView.HeightRequest = -1;
         vulkanView.HeightRequest = -1;
         texturedView.MinimumHeightRequest = 100;
@@ -330,13 +339,10 @@ public sealed class MainPage : ContentPage
             Children = { selectors, playbackControls } };
         layout.Add(controls);
         Grid.SetRow(controls, 3);
-        // Diagnósticos continuam disponíveis no menu, sem ocupar a área de animação.
-        optionsPanel.Children.Add(fpsInfo);
-        optionsPanel.Children.Add(performanceInfo);
+        // Contagens ficam nas opções; monitoramento em tempo real aparece na tela.
         optionsPanel.Children.Add(characterCount);
         optionsPanel.Children.Add(skinCount);
         optionsPanel.Children.Add(animationCount);
-        optionsPanel.Children.Add(status);
         Content = layout;
         skins.SelectedIndexChanged += (_, _) => { if (updatingSelection || skins.SelectedItem is not string s) return; Active.SetSkin(s); InvalidateActiveRenderer(); status.Text = $"Skin: {s}"; };
         animations.SelectedIndexChanged += (_, _) => { if (updatingSelection || animations.SelectedItem is not string a) return; Active.SetAnimation(a); InvalidateActiveRenderer(); status.Text = $"Animação: {a}"; };
