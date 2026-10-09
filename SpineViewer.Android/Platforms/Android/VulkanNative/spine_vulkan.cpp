@@ -125,11 +125,11 @@ struct Renderer {
         stages[0].stage=VK_SHADER_STAGE_VERTEX_BIT; stages[0].module=vs; stages[0].pName="main";
         stages[1].sType=VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
         stages[1].stage=VK_SHADER_STAGE_FRAGMENT_BIT; stages[1].module=fs; stages[1].pName="main";
-        VkVertexInputBindingDescription vb{0,16,VK_VERTEX_INPUT_RATE_VERTEX};
-        VkVertexInputAttributeDescription attrs[2]={{0,0,VK_FORMAT_R32G32_SFLOAT,0},{1,0,VK_FORMAT_R32G32_SFLOAT,8}};
+        VkVertexInputBindingDescription vb{0,32,VK_VERTEX_INPUT_RATE_VERTEX};
+        VkVertexInputAttributeDescription attrs[3]={{0,0,VK_FORMAT_R32G32_SFLOAT,0},{1,0,VK_FORMAT_R32G32_SFLOAT,8},{2,0,VK_FORMAT_R32G32B32A32_SFLOAT,16}};
         VkPipelineVertexInputStateCreateInfo vi{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
         vi.vertexBindingDescriptionCount=1; vi.pVertexBindingDescriptions=&vb;
-        vi.vertexAttributeDescriptionCount=2; vi.pVertexAttributeDescriptions=attrs;
+        vi.vertexAttributeDescriptionCount=3; vi.pVertexAttributeDescriptions=attrs;
         VkPipelineInputAssemblyStateCreateInfo ia{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
         ia.topology=VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
         VkPipelineViewportStateCreateInfo vp{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
@@ -281,7 +281,7 @@ struct Renderer {
         int offset=0;
         for(int i=0;i<batchCount;++i) {
             int n=counts[i];
-            if(n<0||n%12||n>floatCount-offset||!pages[i]) return false;
+            if(n<0||n%24||n>floatCount-offset||!pages[i]) return false;
             Batch b; b.page=pages[i]; b.blend=std::clamp(modes[i],0,3);
             b.xyuv.assign(xyuv+offset,xyuv+offset+n);
             next.push_back(std::move(b)); offset+=n;
@@ -298,8 +298,8 @@ struct Renderer {
             float hx=float(extent.width)/(2*z),hy=float(extent.height)/(2*z);
             float l=x-hx,rr=x+hx,b=y-hy,t=y+hy;
             Batch bg;bg.page=backgroundTexture;bg.blend=0;
-            bg.xyuv={l,b,u0,v1,rr,b,u1,v1,rr,t,u1,v0,
-                     l,b,u0,v1,rr,t,u1,v0,l,t,u0,v0};
+            bg.xyuv={l,b,u0,v1,1,1,1,1,rr,b,u1,v1,1,1,1,1,rr,t,u1,v0,1,1,1,1,
+                     l,b,u0,v1,1,1,1,1,rr,t,u1,v0,1,1,1,1,l,t,u0,v0,1,1,1,1};
             next.insert(next.begin(),std::move(bg));
         }
         batches=std::move(next); cx=x;cy=y;zoom=z;
@@ -535,9 +535,9 @@ struct Renderer {
                 if(it!=textures.end() && pipelines[batch.blend]) {
                     vkCmdBindPipeline(commandBuffer,VK_PIPELINE_BIND_POINT_GRAPHICS,pipelines[batch.blend]);
                     vkCmdBindDescriptorSets(commandBuffer,VK_PIPELINE_BIND_POINT_GRAPHICS,pipelineLayout,0,1,&it->second.descriptor,0,nullptr);
-                    vkCmdDraw(commandBuffer,uint32_t(batch.xyuv.size()/4),1,first,0);
+                    vkCmdDraw(commandBuffer,uint32_t(batch.xyuv.size()/8),1,first,0);
                 }
-                first+=uint32_t(batch.xyuv.size()/4);
+                first+=uint32_t(batch.xyuv.size()/8);
             }
         }
         vkCmdEndRenderPass(commandBuffer);

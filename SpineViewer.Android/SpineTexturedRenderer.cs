@@ -13,6 +13,7 @@ public sealed class SpineTriangle
     public BlendMode Blend = BlendMode.Normal;
     public readonly float[] XY = new float[6];
     public readonly float[] UV = new float[6];
+    public readonly float[] Tint = { 1f, 1f, 1f, 1f };
 }
 
 public sealed class SpineTexturedRenderer : SKCanvasView
@@ -128,6 +129,7 @@ public static class Spine41Geometry
             int[] indices;
             AtlasRegion? region;
             int length;
+            float ar, ag, ab, aa;
             if (slot.Attachment is RegionAttachment quad)
             {
                 length = 8;
@@ -136,6 +138,7 @@ public static class Spine41Geometry
                 uv = quad.UVs;
                 indices = quadIndices;
                 region = quad.Region as AtlasRegion;
+                ar = quad.R; ag = quad.G; ab = quad.B; aa = quad.A;
             }
             else if (slot.Attachment is MeshAttachment mesh)
             {
@@ -145,9 +148,15 @@ public static class Spine41Geometry
                 uv = mesh.UVs;
                 indices = mesh.Triangles;
                 region = mesh.Region as AtlasRegion;
+                ar = mesh.R; ag = mesh.G; ab = mesh.B; aa = mesh.A;
             }
             else { clipper.ClipEnd(slot); continue; }
             if (region == null || uv == null || indices == null) { clipper.ClipEnd(slot); continue; }
+            float cr = Math.Clamp(skeleton.R * slot.R * ar, 0f, 1f);
+            float cg = Math.Clamp(skeleton.G * slot.G * ag, 0f, 1f);
+            float cb = Math.Clamp(skeleton.B * slot.B * ab, 0f, 1f);
+            float ca = Math.Clamp(skeleton.A * slot.A * aa, 0f, 1f);
+            if (ca <= 0f) { clipper.ClipEnd(slot); continue; }
             float[] xy = world;
             if (clipper.IsClipping) {
                 clipper.ClipTriangles(world, length, indices, indices.Length, uv);
@@ -157,16 +166,16 @@ public static class Spine41Geometry
                 length = clipper.ClippedVertices.Count;
                 // ExposedList backing arrays can exceed their active count.
                 int triangleCount = clipper.ClippedTriangles.Count;
-                Emit(xy, length, uv, indices, triangleCount, region.page.name, slot.Data.BlendMode);
+                Emit(xy, length, uv, indices, triangleCount, region.page.name, slot.Data.BlendMode, cr, cg, cb, ca);
             } else {
-                Emit(xy, length, uv, indices, indices.Length, region.page.name, slot.Data.BlendMode);
+                Emit(xy, length, uv, indices, indices.Length, region.page.name, slot.Data.BlendMode, cr, cg, cb, ca);
             }
             clipper.ClipEnd(slot);
         }
         clipper.ClipEnd();
         return active;
     }
-    static void Emit(float[] xy, int length, float[] uv, int[] indices, int count, string page, BlendMode blend)
+    static void Emit(float[] xy, int length, float[] uv, int[] indices, int count, string page, BlendMode blend, float cr, float cg, float cb, float ca)
     {
             for (int i = 0; i + 2 < count; i += 3)
             {
@@ -188,6 +197,7 @@ public static class Spine41Geometry
                 var triangle = pool[index];
                 triangle.Page = page;
                 triangle.Blend = blend;
+                triangle.Tint[0] = cr; triangle.Tint[1] = cg; triangle.Tint[2] = cb; triangle.Tint[3] = ca;
                 for (int j = 0; j < 3; j++)
                 {
                     int k = j == 0 ? k0 : j == 1 ? k1 : k2;

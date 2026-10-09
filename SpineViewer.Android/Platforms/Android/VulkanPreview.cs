@@ -49,7 +49,7 @@ internal sealed class VulkanPreviewCallback : Java.Lang.Object, ISurfaceHolderCa
         return size;
     }
     private void EnsureFrameCapacity(int triangles) {
-        int floats = checked(triangles * 12);
+        int floats = checked(triangles * 24);
         if (vertexScratch.Length < floats) Array.Resize(ref vertexScratch, Grow(vertexScratch.Length, floats));
         // Worst case: every triangle changes its texture or blend mode.
         if (countScratch.Length < triangles) Array.Resize(ref countScratch, Grow(countScratch.Length, triangles));
@@ -137,7 +137,7 @@ internal sealed class VulkanPreviewCallback : Java.Lang.Object, ISurfaceHolderCa
                     var t=tris[i];int start=n;
                     while(i<tris.Count && tris[i].Blend==t.Blend && string.Equals(tris[i].Page,t.Page,StringComparison.OrdinalIgnoreCase)) {
                         var tri=tris[i++];
-                        for(int j=0;j<3;j++) {vertexScratch[n++]=tri.XY[j*2];vertexScratch[n++]=tri.XY[j*2+1];vertexScratch[n++]=tri.UV[j*2];vertexScratch[n++]=tri.UV[j*2+1];}
+                        for(int j=0;j<3;j++) {vertexScratch[n++]=tri.XY[j*2];vertexScratch[n++]=tri.XY[j*2+1];vertexScratch[n++]=tri.UV[j*2];vertexScratch[n++]=tri.UV[j*2+1]; for(int c=0;c<4;c++) vertexScratch[n++]=tri.Tint[c];}
                     }
                     countScratch[batchCount] = n-start;
                     pageScratch[batchCount] = PagePointer(t.Page);

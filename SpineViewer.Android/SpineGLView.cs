@@ -66,7 +66,7 @@ internal sealed class SpineGLRenderer : Java.Lang.Object, GLSurfaceView.IRendere
     readonly Dictionary<string, byte[]> pngs = new(StringComparer.OrdinalIgnoreCase);
     readonly Dictionary<string, int> textureIds = new(StringComparer.OrdinalIgnoreCase);
     readonly List<(string page, BlendMode blend, float[] vertices)> batches = new();
-    int program, posAttr, uvAttr, samplerUniform, sizeUniform, halfHeightUniform;
+    int program, posAttr, uvAttr, tintAttr, samplerUniform, sizeUniform, halfHeightUniform;
     int vertexBuffer;
     int backgroundVersion = -1;
     int width = 1, height = 1;
@@ -96,18 +96,19 @@ internal sealed class SpineGLRenderer : Java.Lang.Object, GLSurfaceView.IRendere
                 BlendMode blend=triangles[start].Blend;
                 int end=start+1;
                 while(end<triangles.Count && string.Equals(page,triangles[end].Page,StringComparison.OrdinalIgnoreCase) && blend == triangles[end].Blend) end++;
-                var data=new float[(end-start)*3*4];
+                var data=new float[(end-start)*3*8];
                 int n=0;
                 for(int i=start;i<end;i++) for(int j=0;j<3;j++) {
                     data[n++]=triangles[i].XY[j*2]; data[n++]=triangles[i].XY[j*2+1];
                     data[n++]=triangles[i].UV[j*2]; data[n++]=triangles[i].UV[j*2+1];
+                    for(int c=0;c<4;c++) data[n++]=triangles[i].Tint[c];
                 }
                 batches.Add((page,blend,data)); start=end;
             }
         }
     }
-    const string VertexShader = "#version 300 es\nprecision highp float;\nin vec2 aPos; in vec2 aUV; uniform vec4 uView; uniform float uHalfHeight; out vec2 vUV; void main(){ vec2 p=(aPos-uView.xy)*uView.z; gl_Position=vec4(p.x/uView.w, p.y/uHalfHeight, 0.0,1.0); vUV=aUV; }";
-    const string FragmentShader = "#version 300 es\nprecision mediump float; in vec2 vUV; uniform sampler2D uTexture; out vec4 frag; void main(){ vec4 c=texture(uTexture,vUV); if(c.a < 0.0039) discard; frag=c; }";
+    const string VertexShader = "#version 300 es\nprecision highp float;\nin vec2 aPos; in vec2 aUV; uniform vec4 uView; uniform float uHalfHeight; out vec2 vUV; out vec4 vTint; in vec4 aTint; void main(){ vec2 p=(aPos-uView.xy)*uView.z; gl_Position=vec4(p.x/uView.w, p.y/uHalfHeight, 0.0,1.0); vUV=aUV; vTint=aTint; }";
+    const string FragmentShader = "#version 300 es\nprecision mediump float; in vec2 vUV; in vec4 vTint; uniform sampler2D uTexture; out vec4 frag; void main(){ vec4 c=texture(uTexture,vUV)*vTint; if(c.a < 0.0039) discard; frag=c; }";
     static int Compile(int type,string source) {
         int shader=GLES30.GlCreateShader(type); GLES30.GlShaderSource(shader,source); GLES30.GlCompileShader(shader);
         int[] ok=new int[1]; GLES30.GlGetShaderiv(shader,GLES30.GlCompileStatus,ok,0);
@@ -124,9 +125,9 @@ internal sealed class SpineGLRenderer : Java.Lang.Object, GLSurfaceView.IRendere
         int vs=Compile(GLES30.GlVertexShader,VertexShader), fs=Compile(GLES30.GlFragmentShader,FragmentShader);
         program=GLES30.GlCreateProgram(); GLES30.GlAttachShader(program,vs); GLES30.GlAttachShader(program,fs); GLES30.GlLinkProgram(program);
         GLES30.GlDeleteShader(vs); GLES30.GlDeleteShader(fs);
-        posAttr=GLES30.GlGetAttribLocation(program,"aPos"); uvAttr=GLES30.GlGetAttribLocation(program,"aUV");
+        posAttr=GLES30.GlGetAttribLocation(program,"aPos"); uvAttr=GLES30.GlGetAttribLocation(program,"aUV"); tintAttr=GLES30.GlGetAttribLocation(program,"aTint");
         sizeUniform=GLES30.GlGetUniformLocation(program,"uView"); halfHeightUniform=GLES30.GlGetUniformLocation(program,"uHalfHeight"); samplerUniform=GLES30.GlGetUniformLocation(program,"uTexture");
-        GLES30.GlEnable(GLES30.GlBlend); GLES30.GlBlendFunc(GLES30.GlSrcAlpha,GLES30.GlOneMinusSrcAlpha);
+        GLES30.GlEnable(GLES30.GlBlend); GLES30.GlBlendFuncSeparate(GLES30.GlSrcAlpha,GLES30.GlOneMinusSrcAlpha,GLES30.GlOne,GLES30.GlOneMinusSrcAlpha);
         GLES30.GlDisable(GLES30.GlDepthTest);
         GLES30.GlDisable(0x0B44); // GL_CULL_FACE // Spine mesh triangles can use either winding.
     }
@@ -175,27 +176,34 @@ internal sealed class SpineGLRenderer : Java.Lang.Object, GLSurfaceView.IRendere
                 if (bgId != 0) {
                     float cx = centerX-camera.PanX/effectiveScale;
                     float cy = centerY+camera.PanY/effectiveScale;
-                    float[] quad = SpineBackgroundImage.Quad(cx,cy,effectiveScale,width,height);
+                    float[] bgQuad = SpineBackgroundImage.Quad(cx,cy,effectiveScale,width,height);
+                    float[] quad = new float[48];
+                    for (int k=0;k<6;k++) {
+                        Array.Copy(bgQuad,k*4,quad,k*8,4);
+                        for (int c=4;c<8;c++) quad[k*8+c]=1f;
+                    }
                     var buffer=ByteBuffer.AllocateDirect(quad.Length*4).Order(ByteOrder.NativeOrder()).AsFloatBuffer();
                     buffer.Put(quad);buffer.Position(0);
-                    GLES30.GlBlendFunc(GLES30.GlSrcAlpha,GLES30.GlOneMinusSrcAlpha);
+                    GLES30.GlBlendFuncSeparate(GLES30.GlSrcAlpha,GLES30.GlOneMinusSrcAlpha,GLES30.GlOne,GLES30.GlOneMinusSrcAlpha);
                     GLES30.GlBindBuffer(GLES30.GlArrayBuffer,vertexBuffer);
                     GLES30.GlBufferData(GLES30.GlArrayBuffer,quad.Length*4,buffer,GLES30.GlStreamDraw);
                     GLES30.GlActiveTexture(GLES30.GlTexture0);GLES30.GlBindTexture(GLES30.GlTexture2d,bgId);
                     GLES30.GlUniform1i(samplerUniform,0);
                     GLES30.GlEnableVertexAttribArray(posAttr);GLES30.GlEnableVertexAttribArray(uvAttr);
-                    GLES30.GlVertexAttribPointer(posAttr,2,GLES30.GlFloat,false,16,0);
-                    GLES30.GlVertexAttribPointer(uvAttr,2,GLES30.GlFloat,false,16,8);
+                    GLES30.GlVertexAttribPointer(posAttr,2,GLES30.GlFloat,false,32,0);
+                    GLES30.GlVertexAttribPointer(uvAttr,2,GLES30.GlFloat,false,32,8);
+                    GLES30.GlEnableVertexAttribArray(tintAttr);
+                    GLES30.GlVertexAttribPointer(tintAttr,4,GLES30.GlFloat,false,32,16);
                     GLES30.GlDrawArrays(GLES30.GlTriangles,0,6);
                 }
             }
             // Vertex shader handles viewport aspect ratio.
             foreach(var (page,blend,source) in batches) {
                 switch (blend) {
-                    case BlendMode.Additive: GLES30.GlBlendFunc(GLES30.GlSrcAlpha, GLES30.GlOne); break;
-                    case BlendMode.Multiply: GLES30.GlBlendFunc(GLES30.GlDstColor, GLES30.GlOneMinusSrcAlpha); break;
-                    case BlendMode.Screen: GLES30.GlBlendFunc(GLES30.GlOne, GLES30.GlOneMinusSrcColor); break;
-                    default: GLES30.GlBlendFunc(GLES30.GlSrcAlpha, GLES30.GlOneMinusSrcAlpha); break;
+                    case BlendMode.Additive: GLES30.GlBlendFuncSeparate(GLES30.GlSrcAlpha, GLES30.GlOne,GLES30.GlOne,GLES30.GlOne); break;
+                    case BlendMode.Multiply: GLES30.GlBlendFuncSeparate(GLES30.GlDstColor, GLES30.GlOneMinusSrcAlpha,GLES30.GlOne,GLES30.GlOneMinusSrcAlpha); break;
+                    case BlendMode.Screen: GLES30.GlBlendFuncSeparate(GLES30.GlOne, GLES30.GlOneMinusSrcColor,GLES30.GlOne,GLES30.GlOneMinusSrcAlpha); break;
+                    default: GLES30.GlBlendFuncSeparate(GLES30.GlSrcAlpha,GLES30.GlOneMinusSrcAlpha,GLES30.GlOne,GLES30.GlOneMinusSrcAlpha); break;
                 }
                 if(!pngs.TryGetValue(page,out var png)) continue;
                 int id=GetTexture(page,png); if(id==0) continue;
@@ -208,9 +216,11 @@ internal sealed class SpineGLRenderer : Java.Lang.Object, GLSurfaceView.IRendere
                 GLES30.GlActiveTexture(GLES30.GlTexture0); GLES30.GlBindTexture(GLES30.GlTexture2d,id);
                 GLES30.GlUniform1i(samplerUniform,0);
                 GLES30.GlEnableVertexAttribArray(posAttr); GLES30.GlEnableVertexAttribArray(uvAttr);
-                GLES30.GlVertexAttribPointer(posAttr,2,GLES30.GlFloat,false,16,0);
-                GLES30.GlVertexAttribPointer(uvAttr,2,GLES30.GlFloat,false,16,8);
-                GLES30.GlDrawArrays(GLES30.GlTriangles,0,source.Length/4);
+                GLES30.GlVertexAttribPointer(posAttr,2,GLES30.GlFloat,false,32,0);
+                GLES30.GlVertexAttribPointer(uvAttr,2,GLES30.GlFloat,false,32,8);
+                    GLES30.GlEnableVertexAttribArray(tintAttr);
+                    GLES30.GlVertexAttribPointer(tintAttr,4,GLES30.GlFloat,false,32,16);
+                GLES30.GlDrawArrays(GLES30.GlTriangles,0,source.Length/8);
             }
         }
     }
