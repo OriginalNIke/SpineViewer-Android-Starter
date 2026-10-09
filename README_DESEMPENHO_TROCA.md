@@ -1,0 +1,1 @@
+Melhorias: última escolha de personagem não é ignorada durante troca em andamento; cache de parsing de atlas por pasta; cache invalidado ao importar nova pasta. Mantidos os dois runtimes e renderizadores. A medição real de FPS requer dispositivo.

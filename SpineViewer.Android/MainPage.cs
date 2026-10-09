@@ -12,6 +12,9 @@ public sealed class MainPage : ContentPage
     IReadOnlyList<FolderImporter.Entry>? folderFiles;
     bool updatingCharacter;
     bool loadingCharacter;
+    string? pendingCharacter;
+    string? loadedCharacter;
+    readonly Dictionary<string, (string Text, AtlasCatalog Catalog)> atlasCache = new(StringComparer.OrdinalIgnoreCase);
     IReadOnlyList<string> allSkins = Array.Empty<string>();
     IReadOnlyList<string> allAnimations = Array.Empty<string>();
     bool updatingSelection;
@@ -85,10 +88,20 @@ public sealed class MainPage : ContentPage
         nextCharacter.Clicked += (_, _) => MoveSelection(characters, 1);
         characters.SelectedIndexChanged += async (_, _) =>
         {
-            if (updatingCharacter || loadingCharacter || folderFiles is null || characters.SelectedItem is not string name) return;
+            if (updatingCharacter || folderFiles is null || characters.SelectedItem is not string name) return;
+            pendingCharacter = name;
+            if (loadingCharacter) return;
             loadingCharacter = true;
-            try { await LoadCharacterFromFolderAsync(folderFiles, name); }
-            catch (Exception ex) { await DisplayAlertAsync("Trocar personagem", ex.Message, "OK"); }
+            try
+            {
+                while (pendingCharacter is { } next)
+                {
+                    pendingCharacter = null;
+                    if (next == loadedCharacter) continue;
+                    try { await LoadCharacterFromFolderAsync(folderFiles, next); loadedCharacter = next; }
+                    catch (Exception ex) { await DisplayAlertAsync("Trocar personagem", ex.Message, "OK"); }
+                }
+            }
             finally { loadingCharacter = false; }
         };
         play.Text = "▶ Reproduzir";
@@ -373,6 +386,9 @@ public sealed class MainPage : ContentPage
             if (skeletons.Count == 0 || !files.Any(f => f.Name.EndsWith(".atlas", StringComparison.OrdinalIgnoreCase)))
                 throw new InvalidDataException("Nenhum conjunto Spine (.skel/.json e .atlas) encontrado na pasta ou subpastas.");
             folderFiles = files;
+            atlasCache.Clear();
+            loadedCharacter = null;
+            pendingCharacter = null;
             updatingCharacter = true;
             try
             {
@@ -381,7 +397,9 @@ public sealed class MainPage : ContentPage
                 characters.SelectedIndex = 0;
             }
             finally { updatingCharacter = false; }
-            await LoadCharacterFromFolderAsync(files, skeletons[0].Name);
+            loadingCharacter = true;
+            try { await LoadCharacterFromFolderAsync(files, skeletons[0].Name); loadedCharacter = skeletons[0].Name; }
+            finally { loadingCharacter = false; }
         }
         catch (Exception ex) { await DisplayAlertAsync("Importar pasta", ex.Message, "OK"); }
     }
@@ -409,8 +427,14 @@ public sealed class MainPage : ContentPage
                 if (string.IsNullOrEmpty(selection) || selection == "Cancelar") return;
                 selectedAtlas = rankedAtlases.First(f => f.Name == selection);
             }
-            var atlasString = System.Text.Encoding.UTF8.GetString(selectedAtlas.Content);
-            var catalog = SpineAtlasCatalog.Read(atlasString);
+            if (!atlasCache.TryGetValue(selectedAtlas.Name, out var cachedAtlas))
+            {
+                string text = System.Text.Encoding.UTF8.GetString(selectedAtlas.Content);
+                cachedAtlas = (text, SpineAtlasCatalog.Read(text));
+                atlasCache[selectedAtlas.Name] = cachedAtlas;
+            }
+            var atlasString = cachedAtlas.Text;
+            var catalog = cachedAtlas.Catalog;
             var pngs = files.Where(f => f.Name.EndsWith(".png", StringComparison.OrdinalIgnoreCase)).ToList();
             var textures = new List<(string page, FolderImporter.Entry file)>();
             foreach (var page in catalog.Pages)
