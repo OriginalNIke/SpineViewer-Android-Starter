@@ -111,6 +111,8 @@ public sealed class MainPage : ContentPage
         var frameClock = System.Diagnostics.Stopwatch.StartNew();
         long lastFrame = frameClock.ElapsedTicks;
         fpsStart = lastFrame;
+        bool optionsExpanded = false;
+        long lastVulkanPresentation = 0;
         playbackTimer.Tick += (_, _) =>
         {
             long now = frameClock.ElapsedTicks;
@@ -118,7 +120,18 @@ public sealed class MainPage : ContentPage
             lastFrame = now;
             if (!playing || !Active.IsLoaded) return;
             Active.Step(dt);
-            if (rendererChoice.SelectedIndex == 1) vulkanView.InvalidateSurface();
+            if (rendererChoice.SelectedIndex == 1)
+            {
+                // Vulkan presents synchronously. While the options panel is visible,
+                // avoid saturating the UI thread with blocking swapchain presents.
+                // Keep animation time advancing at the normal rate.
+                long interval = System.Diagnostics.Stopwatch.Frequency / (optionsExpanded ? 20 : 60);
+                if (now - lastVulkanPresentation >= interval)
+                {
+                    lastVulkanPresentation = now;
+                    vulkanView.InvalidateSurface();
+                }
+            }
             else texturedView.InvalidateSurface();
             frameSamples++;
             if ((now - fpsStart) >= System.Diagnostics.Stopwatch.Frequency)
@@ -222,6 +235,7 @@ public sealed class MainPage : ContentPage
         menuButton.Clicked += (_, _) =>
         {
             optionsPanel.IsVisible = !optionsPanel.IsVisible;
+            optionsExpanded = optionsPanel.IsVisible;
             menuButton.Text = optionsPanel.IsVisible ? "✕  Fechar opções  ▴" : "☰  Opções  ▾";
         };
         // Layout responsivo: o visualizador recebe o espaço restante da tela.
