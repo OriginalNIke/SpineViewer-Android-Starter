@@ -575,7 +575,7 @@ public sealed class MainPage : ContentPage
             Active.Step(0f); // Apply first pose before first render (OpenGL and Vulkan).
         }
         play.IsEnabled = Active.Animations.Count > 0;
-        SpineCamera.Reset(); // Reinicia a câmera ao trocar personagem.
+        SpineCamera.ResetCharacterFrame(); // Reinicia o enquadramento estável para o novo personagem.
         playing = autoPlay && play.IsEnabled;
         play.Text = playing ? "⏸ Pausar" : "▶ Reproduzir";
         InvalidateActiveRenderer();

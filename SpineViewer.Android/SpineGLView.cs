@@ -99,9 +99,9 @@ internal sealed class SpineGLRenderer : Java.Lang.Object, GLSurfaceView.IRendere
                 minX=Math.Min(minX,t.XY[j]); maxX=Math.Max(maxX,t.XY[j]);
                 minY=Math.Min(minY,t.XY[j+1]); maxY=Math.Max(maxY,t.XY[j+1]);
             }
-            centerX=(minX+maxX)*0.5f; centerY=(minY+maxY)*0.5f;
-            modelWidth = Math.Max(1f, maxX-minX);
-            modelHeight = Math.Max(1f, maxY-minY);
+            var stable = SpineCamera.StableFrame(minX, minY, maxX, maxY);
+            centerX = stable.X; centerY = stable.Y;
+            modelWidth = stable.Width; modelHeight = stable.Height;
             int start=0;
             while(start<triangles.Count) {
                 string page=triangles[start].Page;

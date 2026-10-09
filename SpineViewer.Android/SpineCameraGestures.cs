@@ -7,6 +7,28 @@ internal static class SpineCamera
 {
     private static readonly object Gate = new();
     private static float zoom = 1f, panX, panY;
+    // A moving mesh must not drive camera bounds every frame. Shared by both backends.
+    private static bool hasFrame;
+    private static float frameX, frameY, frameWidth, frameHeight;
+    public static (float X, float Y, float Width, float Height) StableFrame(float minX, float minY, float maxX, float maxY)
+    {
+        lock (Gate)
+        {
+            if (!hasFrame && float.IsFinite(minX) && float.IsFinite(minY) && float.IsFinite(maxX) && float.IsFinite(maxY) && maxX > minX && maxY > minY)
+            {
+                frameX = (minX + maxX) * 0.5f;
+                frameY = (minY + maxY) * 0.5f;
+                frameWidth = Math.Max(1f, maxX - minX);
+                frameHeight = Math.Max(1f, maxY - minY);
+                hasFrame = true;
+            }
+            return (frameX, frameY, Math.Max(1f, frameWidth), Math.Max(1f, frameHeight));
+        }
+    }
+    public static void ResetCharacterFrame()
+    {
+        lock (Gate) { hasFrame = false; zoom = 1f; panX = 0; panY = 0; }
+    }
     public static (float Zoom, float PanX, float PanY) Snapshot()
     {
         lock (Gate) return (zoom, panX, panY);

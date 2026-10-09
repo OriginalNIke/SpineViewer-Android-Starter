@@ -144,7 +144,8 @@ internal sealed class VulkanPreviewCallback : Java.Lang.Object, ISurfaceHolderCa
                     minX=Math.Min(minX,t.XY[j]);maxX=Math.Max(maxX,t.XY[j]);
                     minY=Math.Min(minY,t.XY[j+1]);maxY=Math.Max(maxY,t.XY[j+1]);
                 }
-                float cx=(minX+maxX)*0.5f,cy=(minY+maxY)*0.5f;
+                var stable = SpineCamera.StableFrame(minX, minY, maxX, maxY);
+                float cx=stable.X, cy=stable.Y;
                 // Native projection uses swapchain extent, not SurfaceView layout size.
                 // Query the exact dimensions used by Vulkan's viewport/push constants.
                 int fitWidth = width, fitHeight = height;
@@ -153,7 +154,7 @@ internal sealed class VulkanPreviewCallback : Java.Lang.Object, ISurfaceHolderCa
                     fitWidth = actualWidth;
                     fitHeight = actualHeight;
                 }
-                float scale = SpineFit.Calculate(fitWidth, fitHeight, maxX-minX, maxY-minY);
+                float scale = SpineFit.Calculate(fitWidth, fitHeight, stable.Width, stable.Height);
                 EnsureFrameCapacity(tris.Count);
                 int n=0, batchCount=0;
                 for(int i=0;i<tris.Count;) {
