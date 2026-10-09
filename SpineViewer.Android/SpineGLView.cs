@@ -65,7 +65,19 @@ internal sealed class SpineGLRenderer : Java.Lang.Object, GLSurfaceView.IRendere
     readonly object sync = new();
     readonly Dictionary<string, byte[]> pngs = new(StringComparer.OrdinalIgnoreCase);
     readonly Dictionary<string, int> textureIds = new(StringComparer.OrdinalIgnoreCase);
-    readonly List<(string page, BlendMode blend, float[] vertices)> batches = new();
+    sealed class Batch
+    {
+        public string Page = "";
+        public BlendMode Blend;
+        public float[] Vertices = Array.Empty<float>();
+        public int Length;
+    }
+    readonly List<Batch> batches = new();
+    int activeBatchCount;
+    // Direct upload memory is reused on the GL thread, rather than allocated per draw.
+    ByteBuffer? uploadBytes;
+    FloatBuffer? uploadFloats;
+    readonly float[] backgroundVertices = new float[48];
     int program, posAttr, uvAttr, tintAttr, samplerUniform, sizeUniform, halfHeightUniform;
     int vertexBuffer;
     int backgroundVersion = -1;
@@ -80,7 +92,7 @@ internal sealed class SpineGLRenderer : Java.Lang.Object, GLSurfaceView.IRendere
     {
         lock (sync)
         {
-            batches.Clear();
+            activeBatchCount = 0;
             if (triangles.Count == 0) return;
             float minX=float.MaxValue,minY=float.MaxValue,maxX=float.MinValue,maxY=float.MinValue;
             foreach(var t in triangles) for(int j=0;j<6;j+=2) {
@@ -96,14 +108,22 @@ internal sealed class SpineGLRenderer : Java.Lang.Object, GLSurfaceView.IRendere
                 BlendMode blend=triangles[start].Blend;
                 int end=start+1;
                 while(end<triangles.Count && string.Equals(page,triangles[end].Page,StringComparison.OrdinalIgnoreCase) && blend == triangles[end].Blend) end++;
-                var data=new float[(end-start)*3*8];
+                int required = (end-start)*3*8;
+                if (activeBatchCount == batches.Count) batches.Add(new Batch());
+                var batch = batches[activeBatchCount++];
+                batch.Page = page;
+                batch.Blend = blend;
+                if (batch.Vertices.Length < required)
+                    batch.Vertices = new float[Math.Max(required, batch.Vertices.Length * 2)];
+                batch.Length = required;
+                var data = batch.Vertices;
                 int n=0;
                 for(int i=start;i<end;i++) for(int j=0;j<3;j++) {
                     data[n++]=triangles[i].XY[j*2]; data[n++]=triangles[i].XY[j*2+1];
                     data[n++]=triangles[i].UV[j*2]; data[n++]=triangles[i].UV[j*2+1];
                     for(int c=0;c<4;c++) data[n++]=triangles[i].Tint[c];
                 }
-                batches.Add((page,blend,data)); start=end;
+                start=end;
             }
         }
     }
@@ -152,6 +172,21 @@ internal sealed class SpineGLRenderer : Java.Lang.Object, GLSurfaceView.IRendere
             textureWidth, textureHeight, 0, GLES30.GlRgba, GLES30.GlUnsignedByte, pixels);
         textureIds[name]=id; return id;
     }
+    private FloatBuffer UploadBuffer(float[] source, int count)
+    {
+        int bytes = checked(count * sizeof(float));
+        if (uploadBytes == null || uploadBytes.Capacity() < bytes)
+        {
+            int capacity = Math.Max(bytes, uploadBytes == null ? 4096 : uploadBytes.Capacity() * 2);
+            uploadBytes = ByteBuffer.AllocateDirect(capacity).Order(ByteOrder.NativeOrder());
+            uploadFloats = uploadBytes.AsFloatBuffer();
+        }
+        uploadFloats!.Clear();
+        uploadFloats.Put(source, 0, count);
+        uploadFloats.Position(0);
+        uploadFloats.Limit(count);
+        return uploadFloats;
+    }
     public void OnDrawFrame(Javax.Microedition.Khronos.Opengles.IGL10? gl)
     {
         GLES30.GlClearColor(SpineBackground.R, SpineBackground.G, SpineBackground.B, 1); GLES30.GlClear(GLES30.GlColorBufferBit);
@@ -177,13 +212,12 @@ internal sealed class SpineGLRenderer : Java.Lang.Object, GLSurfaceView.IRendere
                     float cx = centerX-camera.PanX/effectiveScale;
                     float cy = centerY+camera.PanY/effectiveScale;
                     float[] bgQuad = SpineBackgroundImage.Quad(cx,cy,effectiveScale,width,height);
-                    float[] quad = new float[48];
+                    float[] quad = backgroundVertices;
                     for (int k=0;k<6;k++) {
                         Array.Copy(bgQuad,k*4,quad,k*8,4);
                         for (int c=4;c<8;c++) quad[k*8+c]=1f;
                     }
-                    var buffer=ByteBuffer.AllocateDirect(quad.Length*4).Order(ByteOrder.NativeOrder()).AsFloatBuffer();
-                    buffer.Put(quad);buffer.Position(0);
+                    var buffer = UploadBuffer(quad, quad.Length);
                     GLES30.GlBlendFuncSeparate(GLES30.GlSrcAlpha,GLES30.GlOneMinusSrcAlpha,GLES30.GlOne,GLES30.GlOneMinusSrcAlpha);
                     GLES30.GlBindBuffer(GLES30.GlArrayBuffer,vertexBuffer);
                     GLES30.GlBufferData(GLES30.GlArrayBuffer,quad.Length*4,buffer,GLES30.GlStreamDraw);
@@ -198,7 +232,12 @@ internal sealed class SpineGLRenderer : Java.Lang.Object, GLSurfaceView.IRendere
                 }
             }
             // Vertex shader handles viewport aspect ratio.
-            foreach(var (page,blend,source) in batches) {
+            for (int batchIndex = 0; batchIndex < activeBatchCount; batchIndex++) {
+                var batch = batches[batchIndex];
+                string page = batch.Page;
+                BlendMode blend = batch.Blend;
+                float[] source = batch.Vertices;
+                int sourceLength = batch.Length;
                 switch (blend) {
                     case BlendMode.Additive: GLES30.GlBlendFuncSeparate(GLES30.GlSrcAlpha, GLES30.GlOne,GLES30.GlOne,GLES30.GlOne); break;
                     case BlendMode.Multiply: GLES30.GlBlendFuncSeparate(GLES30.GlDstColor, GLES30.GlOneMinusSrcAlpha,GLES30.GlOne,GLES30.GlOneMinusSrcAlpha); break;
@@ -209,10 +248,9 @@ internal sealed class SpineGLRenderer : Java.Lang.Object, GLSurfaceView.IRendere
                 int id=GetTexture(page,png); if(id==0) continue;
                 // Upload interleaved XYUV data to a GPU VBO. Attribute offsets are
                 // byte offsets (0 and 8), not positions in a Java FloatBuffer.
-                var buffer=ByteBuffer.AllocateDirect(source.Length*4).Order(ByteOrder.NativeOrder()).AsFloatBuffer();
-                buffer.Put(source); buffer.Position(0);
+                var buffer = UploadBuffer(source, sourceLength);
                 GLES30.GlBindBuffer(GLES30.GlArrayBuffer,vertexBuffer);
-                GLES30.GlBufferData(GLES30.GlArrayBuffer,source.Length*4,buffer,GLES30.GlStreamDraw);
+                GLES30.GlBufferData(GLES30.GlArrayBuffer,sourceLength*4,buffer,GLES30.GlStreamDraw);
                 GLES30.GlActiveTexture(GLES30.GlTexture0); GLES30.GlBindTexture(GLES30.GlTexture2d,id);
                 GLES30.GlUniform1i(samplerUniform,0);
                 GLES30.GlEnableVertexAttribArray(posAttr); GLES30.GlEnableVertexAttribArray(uvAttr);
@@ -220,7 +258,7 @@ internal sealed class SpineGLRenderer : Java.Lang.Object, GLSurfaceView.IRendere
                 GLES30.GlVertexAttribPointer(uvAttr,2,GLES30.GlFloat,false,32,8);
                     GLES30.GlEnableVertexAttribArray(tintAttr);
                     GLES30.GlVertexAttribPointer(tintAttr,4,GLES30.GlFloat,false,32,16);
-                GLES30.GlDrawArrays(GLES30.GlTriangles,0,source.Length/8);
+                GLES30.GlDrawArrays(GLES30.GlTriangles,0,sourceLength/8);
             }
         }
     }
