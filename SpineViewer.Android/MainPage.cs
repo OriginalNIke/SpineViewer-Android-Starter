@@ -551,11 +551,20 @@ public sealed class MainPage : ContentPage
         if (use41) runtime41.Load(atlasText, skeletonContent, skeletonBinary);
         else runtime.Load(atlasText, skeletonContent, skeletonBinary);
         UpdateCatalogs(Active.Skins, Active.Animations, true);
+        // Picker selection is updated while selection events are suppressed.
+        // Explicitly assign the first animation to the newly created AnimationState.
+        // Otherwise the UI shows "idle" and "Pausar", but the track is empty.
+        if (Active.Animations.Count > 0)
+        {
+            string initialAnimation = animations.SelectedItem as string ?? Active.Animations[0];
+            Active.SetAnimation(initialAnimation);
+            Active.Step(0f); // Apply first pose before first render (OpenGL and Vulkan).
+        }
         play.IsEnabled = Active.Animations.Count > 0;
         SpineCamera.Reset(); // Reinicia a câmera ao trocar personagem.
         playing = autoPlay && play.IsEnabled;
         play.Text = playing ? "⏸ Pausar" : "▶ Reproduzir";
-        texturedView.InvalidateSurface();
+        InvalidateActiveRenderer();
         status.Text = $"Spine {(use41 ? "4.1" : "4.2")} carregado: {Active.Skins.Count} skins, {Active.Animations.Count} animações.";
         return Task.CompletedTask;
     }
